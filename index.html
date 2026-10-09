@@ -1,0 +1,3770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Pokemon TCG Online Link Duel</title>
+    <meta name="description" content="Pokemon TCG Online Duel Client with WebRTC Lockstep RAM-Sync, Game Boy tactile controls, and mobile touch support." />
+    <meta property="og:title" content="Pokemon TCG Online Link Duel" />
+    <meta property="og:description" content="Pokemon TCG Online Duel Client with WebRTC Lockstep RAM-Sync, Game Boy tactile controls, and mobile touch support." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script src="peerjs.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600;700&family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+        :root {
+            --gb-shell-bg: linear-gradient(168deg, #272d3f 0%, #1a1e2d 55%, #10131d 100%);
+            --gb-bezel-bg: #11141c;
+            --gb-bezel-border: #232738;
+            --dpad-plastic: linear-gradient(145deg, #2a3445, #18202d);
+            --dpad-pressed: linear-gradient(145deg, #141b26, #0c1017);
+            --action-btn-bg: radial-gradient(circle at 35% 28%, #fb7185 0%, #e11d48 40%, #9f1239 80%, #700c26 100%);
+            --action-btn-pressed: radial-gradient(circle at 50% 50%, #9f1239 0%, #4c0519 100%);
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: #080b12;
+            color: #e2e8f0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        .font-mono {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* Authentic Game Boy Color Handheld Chassis */
+        .gb-chassis {
+            background: var(--gb-shell-bg);
+            border: 2px solid #333c52;
+            border-top: 3px solid #45506d;
+            border-radius: 22px 22px 38px 38px;
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.85),
+                0 4px 12px rgba(0, 0, 0, 0.5),
+                inset 0 2px 2px rgba(255, 255, 255, 0.18),
+                inset 0 -3px 6px rgba(0, 0, 0, 0.6);
+            position: relative;
+            transition: all 0.2s ease;
+            width: fit-content;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 8px 6px 14px 6px;
+        }
+
+        /* Subtle curved grip indent on Game Boy sides */
+        .gb-chassis::before {
+            content: '';
+            position: absolute;
+            top: 22%;
+            bottom: 30%;
+            left: -3px;
+            width: 3px;
+            border-radius: 4px 0 0 4px;
+            background: rgba(255, 255, 255, 0.08);
+            pointer-events: none;
+        }
+
+        .gb-chassis::after {
+            content: '';
+            position: absolute;
+            top: 22%;
+            bottom: 30%;
+            right: -3px;
+            width: 3px;
+            border-radius: 0 4px 4px 0;
+            background: rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+        }
+
+        /* Game Boy Screen Bezel — hugs integer-scaled screen tightly */
+        .gb-screen-bezel {
+            background: var(--gb-bezel-bg);
+            border: 2px solid var(--gb-bezel-border);
+            border-bottom: 3px solid #1a1e2b;
+            border-radius: 14px 14px 18px 18px;
+            box-shadow: 
+                inset 0 2px 6px rgba(0, 0, 0, 0.95),
+                0 1px 1px rgba(255, 255, 255, 0.08);
+            position: relative;
+            overflow: hidden;
+            width: fit-content;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            padding: 4px;
+            box-sizing: border-box;
+        }
+
+        /* Acrylic screen glare streak */
+        .gb-screen-bezel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 38%;
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.0) 100%);
+            border-radius: 12px 12px 0 0;
+            pointer-events: none;
+        }
+
+        #gb-canvas {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            width: 160px;
+            height: 144px;
+            background: #000;
+            outline: none;
+            border: none;
+            display: block;
+            flex-shrink: 0;
+            margin: 0 auto;
+            padding: 0;
+            box-sizing: content-box !important;
+            vertical-align: top;
+        }
+
+        /* Screen frame hugs canvas without eating into pixel area */
+        #gb-screen-wrap {
+            position: relative;
+            width: 160px;
+            height: 144px;
+            background: #000;
+            border-radius: 0;
+            overflow: hidden;
+            outline: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            padding: 0;
+            border: none;
+            flex-shrink: 0;
+            box-sizing: content-box !important;
+            line-height: 0;
+        }
+
+        @media (max-width: 1023px) {
+            #gb-chassis {
+                padding: 6px 5px !important;
+                border-radius: 18px 18px 30px 30px !important;
+                width: fit-content;
+                max-width: 100%;
+                margin: 0 auto;
+                box-sizing: border-box;
+            }
+            .gb-screen-bezel {
+                padding: 3px !important;
+                border: 1.5px solid var(--gb-bezel-border) !important;
+                border-radius: 12px 12px 16px 16px !important;
+                width: fit-content;
+                max-width: 100%;
+                margin: 0 auto;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+            #gb-screen-wrap {
+                max-width: 100%;
+                margin: 0 auto;
+            }
+            #gb-canvas {
+                max-width: 100%;
+                margin: 0 auto;
+            }
+        }
+
+        /* Power LED with silver ring */
+        .power-led-ring {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #475569, #1e293b);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.6);
+        }
+
+        /* Tactile Game Boy Cross D-Pad */
+        .dpad-container {
+            width: 138px;
+            height: 138px;
+            position: relative;
+            border-radius: 50%;
+            background: #0b0f17;
+            box-shadow: 
+                inset 0 3px 8px rgba(0, 0, 0, 0.95),
+                0 1px 1px rgba(255, 255, 255, 0.08);
+            border: 1px solid #1f2736;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        @media (min-width: 640px) {
+            .dpad-container {
+                width: 146px;
+                height: 146px;
+            }
+        }
+
+        .dpad-btn {
+            position: absolute;
+            background: var(--dpad-plastic);
+            border: 1px solid #3d4a61;
+            box-shadow: 
+                0 4px 6px rgba(0, 0, 0, 0.6),
+                inset 0 1px 1px rgba(255, 255, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            touch-action: none;
+            transition: transform 0.04s ease, background 0.04s ease, box-shadow 0.04s ease;
+            z-index: 2;
+        }
+
+        .dpad-btn span {
+            color: #64748b;
+            font-size: 13px;
+            transition: color 0.04s ease, transform 0.04s ease;
+            text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+        }
+
+        .dpad-btn:active, .dpad-btn.pressed {
+            background: var(--dpad-pressed);
+            box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.95);
+            transform: translateY(2px);
+        }
+
+        .dpad-btn:active span, .dpad-btn.pressed span {
+            color: #38bdf8;
+            transform: scale(0.92);
+            text-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+        }
+
+        .dpad-up {
+            top: 6px;
+            left: 33.5%;
+            width: 33%;
+            height: 38%;
+            border-radius: 9px 9px 0 0;
+            border-bottom: none;
+        }
+
+        .dpad-down {
+            bottom: 6px;
+            left: 33.5%;
+            width: 33%;
+            height: 38%;
+            border-radius: 0 0 9px 9px;
+            border-top: none;
+        }
+
+        .dpad-left {
+            top: 33.5%;
+            left: 6px;
+            width: 38%;
+            height: 33%;
+            border-radius: 9px 0 0 9px;
+            border-right: none;
+        }
+
+        .dpad-right {
+            top: 33.5%;
+            right: 6px;
+            width: 38%;
+            height: 33%;
+            border-radius: 0 9px 9px 0;
+            border-left: none;
+        }
+
+        /* Authentic Concave Center Pivot Bowl */
+        .dpad-center {
+            position: absolute;
+            top: 33.5%;
+            left: 33.5%;
+            width: 33%;
+            height: 33%;
+            background: #18202d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3;
+            pointer-events: none;
+        }
+
+        .dpad-center::after {
+            content: '';
+            width: 60%;
+            height: 60%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 45% 45%, #0e141d 0%, #1b2331 80%, #0a0d13 100%);
+            box-shadow: 
+                inset 0 2px 4px rgba(0, 0, 0, 0.9),
+                0 1px 1px rgba(255, 255, 255, 0.15);
+            border: 1px solid #111722;
+        }
+
+        /* Tactile Action Buttons Pod (A & B) */
+        .action-pod {
+            background: #0b0f17;
+            border-radius: 9999px;
+            border: 1.5px solid #202838;
+            box-shadow: 
+                inset 0 3px 8px rgba(0, 0, 0, 0.95),
+                0 1px 1px rgba(255, 255, 255, 0.08);
+            transform: rotate(-25deg);
+            padding: 5px 8px;
+            position: relative;
+        }
+
+        .btn-action {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--action-btn-bg);
+            border: 2px solid #be123c;
+            border-top: 2px solid #fb7185;
+            box-shadow: 
+                0 6px 14px rgba(0, 0, 0, 0.75),
+                inset 0 2px 3px rgba(255, 255, 255, 0.45),
+                inset 0 -3px 5px rgba(0, 0, 0, 0.65);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 19px;
+            font-style: italic;
+            color: #fff1f2;
+            cursor: pointer;
+            touch-action: none;
+            transition: transform 0.04s ease, box-shadow 0.04s ease;
+            text-shadow: 0 -1px 1px rgba(0, 0, 0, 0.8), 0 1px 2px rgba(255, 255, 255, 0.35);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        @media (min-width: 640px) {
+            .btn-action {
+                width: 58px;
+                height: 58px;
+                font-size: 21px;
+            }
+        }
+
+        /* Desktop-only pressed look (hover-capable devices). */
+        @media (hover: hover) and (pointer: fine) {
+            .btn-action:active, .btn-action.pressed {
+                background: var(--action-btn-pressed);
+                box-shadow: 
+                    inset 0 4px 8px rgba(0, 0, 0, 0.95),
+                    0 2px 4px rgba(0, 0, 0, 0.5);
+                transform: translateY(2.5px) scale(0.96);
+                color: #fbcfe8;
+            }
+        }
+
+        /* Mobile: ZERO optical feedback on A/B (and all GB buttons).
+           No :active paint, no transitions, no transform — spam taps stay ultra fast. */
+        @media (hover: none), (pointer: coarse) {
+            .btn-action,
+            .btn-action:active,
+            .btn-action.pressed,
+            .btn-action:focus,
+            .btn-action:focus-visible {
+                transition: none !important;
+                transform: none !important;
+                background: var(--action-btn-bg) !important;
+                box-shadow:
+                    0 6px 14px rgba(0, 0, 0, 0.75),
+                    inset 0 2px 3px rgba(255, 255, 255, 0.45),
+                    inset 0 -3px 5px rgba(0, 0, 0, 0.65) !important;
+                color: #fff1f2 !important;
+                filter: none !important;
+                opacity: 1 !important;
+                outline: none !important;
+            }
+            .dpad-btn,
+            .dpad-btn:active,
+            .dpad-btn.pressed,
+            .btn-pill,
+            .btn-pill:active,
+            .btn-pill.pressed {
+                transition: none !important;
+                transform: none !important;
+            }
+            .dpad-btn:active,
+            .dpad-btn.pressed {
+                background: var(--dpad-plastic) !important;
+                box-shadow:
+                    0 4px 6px rgba(0, 0, 0, 0.6),
+                    inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
+            }
+            .dpad-btn:active span,
+            .dpad-btn.pressed span {
+                color: #64748b !important;
+                transform: none !important;
+                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.8) !important;
+            }
+            .btn-pill:active,
+            .btn-pill.pressed {
+                background: linear-gradient(180deg, #475569 0%, #334155 70%, #1e293b 100%) !important;
+                box-shadow:
+                    0 3px 6px rgba(0, 0, 0, 0.6),
+                    inset 0 1px 1px rgba(255, 255, 255, 0.25) !important;
+            }
+        }
+
+        /* Pill Buttons (Select & Start) */
+        .pill-pod {
+            background: #0b0f17;
+            border-radius: 9999px;
+            border: 1px solid #1f2736;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.9);
+            padding: 3px 4px;
+            transform: rotate(-25deg);
+        }
+
+        .btn-pill {
+            width: 48px;
+            height: 14px;
+            border-radius: 9999px;
+            background: linear-gradient(180deg, #475569 0%, #334155 70%, #1e293b 100%);
+            border: 1px solid #1e293b;
+            box-shadow: 
+                0 3px 6px rgba(0, 0, 0, 0.6),
+                inset 0 1px 1px rgba(255, 255, 255, 0.25);
+            cursor: pointer;
+            touch-action: none;
+            display: block;
+            transition: transform 0.04s ease, box-shadow 0.04s ease, background 0.04s ease;
+        }
+
+        .btn-pill:active, .btn-pill.pressed {
+            background: #1e293b;
+            box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.95);
+            transform: translateY(1.5px) scale(0.96);
+        }
+
+        /* Device Adaptive Layout (Portrait vs Landscape on Phone) */
+        @media (max-width: 1023px) and (orientation: portrait) {
+            .mobile-portrait-stack {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                width: 100%;
+            }
+        }
+
+        /* Landscape Phone Handheld Experience */
+        @media (orientation: landscape) and (max-height: 560px) {
+            body {
+                overflow: hidden;
+            }
+            .landscape-handheld {
+                display: grid !important;
+                grid-template-columns: 140px 1fr 140px !important;
+                height: 100vh !important;
+                max-height: 100vh !important;
+                padding: 4px !important;
+                align-items: center !important;
+                gap: 8px !important;
+            }
+            .landscape-left-wing {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 12px !important;
+            }
+            .landscape-center-screen {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                height: 100% !important;
+            }
+            .landscape-right-wing {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: center !important;
+                gap: 12px !important;
+            }
+            .landscape-hide {
+                display: none !important;
+            }
+            .dpad-container {
+                width: 120px !important;
+                height: 120px !important;
+            }
+            .btn-action {
+                width: 48px !important;
+                height: 48px !important;
+                font-size: 17px !important;
+            }
+            .gb-chassis {
+                border-radius: 20px !important;
+                padding: 8px !important;
+            }
+        }
+
+        .hide-scroll::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="px-1 py-2 sm:p-4 flex flex-col items-center min-h-[100dvh]">
+
+    <!-- TOP HEADER & CONNECTION BAR -->
+    <header class="w-full max-w-6xl flex flex-wrap justify-between items-center gap-2.5 sm:gap-4 mb-3 sm:mb-4 bg-slate-900/90 p-2.5 sm:p-4 rounded-2xl border border-slate-800 shadow-xl backdrop-blur">
+        <div class="flex items-center gap-2.5 sm:gap-3">
+            <div class="w-3 h-3 rounded-full bg-emerald-500 shadow-[0_0_12px_#10b981] animate-pulse"></div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm sm:text-lg font-bold tracking-tight text-white flex items-center gap-1.5 sm:gap-2">
+                        POKÉMON TCG
+                        <span class="text-[9px] sm:text-xs font-semibold px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800/60 font-mono">LINK DUEL</span>
+                    </h1>
+                    <!-- Reset button next to the banner (hidden when game is not running) -->
+                    <button
+                        id="btn-reset-game"
+                        type="button"
+                        class="hidden bg-rose-950/80 hover:bg-rose-900 active:scale-95 text-rose-300 hover:text-white px-2.5 py-0.5 rounded-lg text-[10px] font-bold font-mono border border-rose-700/60 shadow-sm cursor-pointer transition flex items-center gap-1"
+                        title="Reset Game"
+                    >
+                        <span>🔄</span> RESET
+                    </button>
+                </div>
+                <div class="text-[10px] sm:text-[11px] text-slate-400 flex items-center gap-1.5 font-mono">
+                    <span>STATUS:</span>
+                    <span id="conn-status" class="text-amber-400 font-bold uppercase tracking-wider">Disconnected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT CONTROLS: ROOM, HOST, JOIN, AUDIO -->
+        <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <!-- Room Code with Click-to-Copy -->
+            <button id="btn-copy-code" type="button" title="Click to copy room code" class="bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 text-right cursor-pointer hover:border-sky-500 transition group">
+                <div class="text-[8px] sm:text-[9px] text-slate-500 group-hover:text-sky-400 uppercase font-semibold tracking-wider font-mono flex items-center gap-1 justify-end">
+                    <span>Room</span>
+                    <span class="text-[8px]">📋</span>
+                </div>
+                <div id="room-code" class="text-xs sm:text-sm font-bold text-sky-400 tracking-widest font-mono">------</div>
+            </button>
+
+            <button id="btn-host" class="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-md cursor-pointer">
+                HOST
+            </button>
+
+            <div class="flex items-center gap-1">
+                <input type="text" id="remote-id" placeholder="CODE" maxlength="6" class="bg-slate-950 border border-slate-700 px-2 py-1.5 rounded-xl text-xs font-mono uppercase tracking-widest focus:outline-none focus:border-blue-500 w-16 sm:w-24 text-center text-white placeholder-slate-600">
+                <button id="btn-connect" class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-md cursor-pointer">
+                    JOIN
+                </button>
+            </div>
+
+            <!-- Audio Resume / Sound Button -->
+            <button id="btn-audio-toggle" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-xl text-xs font-mono cursor-pointer transition flex items-center gap-1" title="Toggle / Resume Audio">
+                <span id="audio-icon">🔊</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN INTERFACE: Maximizes Center Column for Maximum Game Boy Screen Scale -->
+    <main class="w-full max-w-[1440px] flex flex-col lg:flex-row gap-3 lg:gap-4 items-start justify-center px-1">
+
+        <!-- LEFT COLUMN: FILE & SAVE MANAGEMENT + KEYBOARD GUIDE (Desktop) -->
+        <div id="panel-files-col" class="lg:w-[240px] xl:w-[260px] lg:flex-shrink-0 lg:order-1 order-2 flex flex-col gap-3 w-full">
+
+            <div class="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-lg">
+                <h3 class="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider font-mono flex items-center justify-between">
+                    <span>File Management</span>
+                    <span class="text-[10px] text-slate-500">ROM & SAV</span>
+                </h3>
+
+                <div class="space-y-3 font-sans">
+                    <div>
+                        <div class="flex items-center justify-between text-[10px] uppercase mb-1">
+                            <span class="text-slate-400 font-bold">1. ROM File</span>
+                            <span id="rom-status" class="text-sky-400 font-mono text-[9px]">Searching server...</span>
+                        </div>
+                        <input
+                            type="file"
+                            id="rom-upload"
+                            accept=".gbc,.gb"
+                            class="text-xs w-full block text-slate-400 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
+                        >
+                        <p class="text-[9px] text-slate-500 mt-1">Auto-loads poketcg-duel-client.gbc</p>
+                    </div>
+
+                    <div>
+                        <div class="flex items-center justify-between text-[10px] uppercase mb-1">
+                            <span class="text-slate-400 font-bold">2. Save Data</span>
+                            <span id="sav-status" class="text-slate-400 font-mono text-[9px]">Checking storage...</span>
+                        </div>
+                        <input
+                            type="file"
+                            id="sav-upload"
+                            accept=".sav"
+                            class="text-xs w-full block text-slate-400 file:mr-3 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-[11px] file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
+                        >
+                        <p class="text-[9px] text-slate-500 mt-1">Auto-saves to browser IndexedDB</p>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 pt-1 font-mono">
+                        <button
+                            id="btn-save-now"
+                            class="w-full bg-blue-700 hover:bg-blue-600 text-white py-2 rounded-lg text-[10px] font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow transition active:scale-95 flex items-center justify-center gap-1"
+                            disabled
+                        >
+                            💾 SAVE
+                        </button>
+                        <button
+                            id="btn-download-sav"
+                            class="w-full bg-emerald-700 hover:bg-emerald-600 text-white py-2 rounded-lg text-[10px] font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow transition active:scale-95"
+                            disabled
+                        >
+                            EXPORT
+                        </button>
+                        <button
+                            id="btn-clear-sav"
+                            class="w-full bg-rose-950/60 hover:bg-rose-900 text-rose-300 py-2 rounded-lg text-[10px] font-bold border border-rose-800/50 cursor-pointer shadow transition active:scale-95"
+                        >
+                            RESET
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Avatar (48×48 PNG → RGBDS 2bpp + palette) -->
+            <div class="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-lg">
+                <h3 class="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider font-mono flex items-center justify-between">
+                    <span>Custom Avatar</span>
+                    <button id="btn-customize-toggle" type="button" class="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-violet-950 text-violet-300 border border-violet-700/60 hover:bg-violet-900 cursor-pointer transition">
+                        CUSTOMIZE
+                    </button>
+                </h3>
+                <div id="customize-panel" class="hidden space-y-3 font-sans">
+                    <p class="text-[9px] text-slate-500 leading-relaxed">
+                        Drop a <strong class="text-slate-300">48×48 PNG</strong> with ≤ <strong class="text-slate-300">4 colors</strong>.
+                        Your Custom Avatar will be available in the PROFILE!
+                    </p>
+                    <label id="avatar-drop" class="block border-2 border-dashed border-slate-700 hover:border-violet-500 rounded-xl p-4 text-center cursor-pointer transition bg-slate-950/50">
+                        <input id="avatar-upload" type="file" accept="image/png,.png" class="hidden">
+                        <div class="text-[11px] text-slate-300 font-semibold">Drop PNG or click</div>
+                        <div id="avatar-status" class="text-[9px] text-slate-500 mt-1 font-mono">No custom avatar</div>
+                    </label>
+                    <div class="flex items-center gap-3">
+                        <canvas id="avatar-preview" width="48" height="48" class="rounded border border-slate-700 bg-black" style="image-rendering:pixelated;width:64px;height:64px"></canvas>
+                        <div class="flex-1 space-y-1">
+                            <div id="avatar-palette" class="flex gap-1 flex-wrap"></div>
+                            <button id="btn-clear-avatar" type="button" class="w-full bg-rose-950/60 hover:bg-rose-900 text-rose-300 py-1.5 rounded-lg text-[10px] font-bold border border-rose-800/50 cursor-pointer disabled:opacity-30" disabled>
+                                CLEAR AVATAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Desktop Keyboard Controls Cheatsheet -->
+            <div class="hidden lg:block bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-lg text-[11px]">
+                <div class="flex items-center justify-between mb-2.5">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                        <span>Keyboard Controls</span>
+                        <span class="text-[9px] text-sky-400">Desktop</span>
+                    </h3>
+                    <button
+                        id="btn-open-keymap"
+                        type="button"
+                        class="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-sky-950 text-sky-300 border border-sky-700/60 hover:bg-sky-900 cursor-pointer transition flex items-center gap-1 shadow-sm active:scale-95"
+                        title="Configure custom key bindings"
+                    >
+                        <span>⌨️</span> MAP KEYS
+                    </button>
+                </div>
+                <div id="keyboard-cheatsheet-rows" class="space-y-1.5 font-mono text-slate-300 text-[10px]">
+                    <div class="flex justify-between py-0.5 border-b border-slate-800/60">
+                        <span class="text-slate-400">D-Pad</span>
+                        <span><kbd class="px-1 bg-slate-800 border border-slate-700 rounded text-slate-200">WASD</kbd> / <kbd class="px-1 bg-slate-800 border border-slate-700 rounded text-slate-200">Arrows</kbd></span>
+                    </div>
+                    <div class="flex justify-between py-0.5 border-b border-slate-800/60">
+                        <span class="text-slate-400">Button A</span>
+                        <span><kbd class="px-1 bg-slate-800 border border-slate-700 rounded text-rose-300 font-bold">X</kbd> / <kbd class="px-1 bg-slate-800 border border-slate-700 rounded text-slate-200">J</kbd></span>
+                    </div>
+                    <div class="flex justify-between py-0.5 border-b border-slate-800/60">
+                        <span class="text-slate-400">Button B</span>
+                        <span><kbd class="px-1 bg-slate-800 border border-slate-700 rounded text-rose-300 font-bold">Z</kbd> / <kbd class="px-1 bg-slate-800 border border-slate-700 rounded text-slate-200">K</kbd></span>
+                    </div>
+                    <div class="flex justify-between py-0.5 border-b border-slate-800/60">
+                        <span class="text-slate-400">Start</span>
+                        <span><kbd class="px-1.5 bg-slate-800 border border-slate-700 rounded text-slate-200">Enter</kbd></span>
+                    </div>
+                    <div class="flex justify-between py-0.5">
+                        <span class="text-slate-400">Select</span>
+                        <span><kbd class="px-1.5 bg-slate-800 border border-slate-700 rounded text-slate-200">Space</kbd> / <kbd class="px-1.5 bg-slate-800 border border-slate-700 rounded text-slate-200">Tab</kbd></span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- CENTER COLUMN: HANDHELD GAME BOY CONSOLE (Takes all available space) -->
+        <div class="flex-1 flex flex-col items-center min-w-0 w-full lg:order-2 order-1">
+            <div id="gb-chassis" class="gb-chassis relative select-none">
+                
+                <!-- Game Boy Screen Bezel -->
+                <div class="gb-screen-bezel relative flex flex-col items-center">
+                    
+                    <!-- Top bezel accents: Power LED & Stereo indicator -->
+                    <div class="w-full flex items-center justify-between text-[10px] text-zinc-500 font-sans font-bold px-2 pt-0.5 mb-1.5">
+                        <div class="flex items-center gap-2">
+                            <div class="power-led-ring">
+                                <span id="power-led" class="w-2.5 h-2.5 rounded-full bg-rose-900 border border-zinc-700 shadow-none transition-all"></span>
+                            </div>
+                            <span class="tracking-widest text-[9px] text-zinc-400 font-mono">POWER</span>
+                        </div>
+                        <div class="text-[9px] tracking-wider text-zinc-400 uppercase flex items-center gap-1.5 font-mono">
+                            <span>STEREO</span>
+                            <span class="text-sky-400">●</span>
+                        </div>
+                    </div>
+
+                    <!-- Screen Canvas Container — integer-scaled 160×144 via JS -->
+                    <div id="gb-screen-wrap" class="relative">
+                        <canvas id="gb-canvas" width="160" height="144" tabindex="0" class="cursor-pointer"></canvas>
+
+                        <!-- Screen Start Overlay (in the middle of the Game Boy screen) -->
+                        <div id="screen-start-overlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 transition-all z-20">
+                            <button
+                                id="btn-start"
+                                type="button"
+                                class="group relative bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-6 py-3 rounded-2xl text-xs sm:text-sm font-extrabold transition-all shadow-[0_0_25px_rgba(16,185,129,0.5)] cursor-pointer tracking-wider uppercase font-mono flex items-center gap-2 border-2 border-emerald-400/50 hover:border-emerald-300"
+                            >
+                                <span class="text-sm text-white group-hover:scale-110 transition-transform">▶</span>
+                                <span>START GAME</span>
+                            </button>
+                            <p id="screen-start-subtext" class="text-[10px] text-slate-400 mt-2.5 font-mono text-center max-w-[240px]">
+                                Ready to start duel
+                            </p>
+                        </div>
+
+                        <!-- Audio Resume Overlay -->
+                        <div id="focus-overlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center cursor-pointer transition-opacity z-20 hidden p-4 text-center">
+                            <span class="text-white font-bold text-xs sm:text-sm bg-blue-600 hover:bg-blue-500 px-5 py-2.5 rounded-full shadow-2xl transition active:scale-95 font-sans flex items-center gap-2">
+                                <span>🔊</span> CLICK TO RESUME AUDIO
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Bezel Logo: GAME BOY COLOR with Authentic Multicolor -->
+                    <div class="w-full flex items-center justify-between mt-2.5 px-2">
+                        <div class="font-sans font-extrabold tracking-wider text-xs sm:text-sm text-zinc-300 italic flex items-center gap-1.5">
+                            <span class="tracking-[0.14em] text-zinc-200 drop-shadow">GAME BOY</span>
+                            <span class="font-black text-[11px] sm:text-xs tracking-tight inline-flex drop-shadow">
+                                <span class="text-rose-500">C</span>
+                                <span class="text-amber-400">O</span>
+                                <span class="text-emerald-400">L</span>
+                                <span class="text-cyan-400">O</span>
+                                <span class="text-purple-400">R</span>
+                            </span>
+                        </div>
+                        <!-- Angled Speaker Grille Slits -->
+                        <div class="flex gap-1 items-center rotate-[-25deg] opacity-60 mr-2">
+                            <div class="w-1 h-3 bg-zinc-700 rounded-full"></div>
+                            <div class="w-1 h-4 bg-zinc-700 rounded-full"></div>
+                            <div class="w-1 h-4.5 bg-zinc-700 rounded-full"></div>
+                            <div class="w-1 h-4 bg-zinc-700 rounded-full"></div>
+                            <div class="w-1 h-3 bg-zinc-700 rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CONTROLLER SECTION (D-Pad, A/B, Select/Start) -->
+                <div class="controller-area w-full mt-4 sm:mt-6 pb-2 select-none touch-none">
+                    
+                    <!-- Upper Row: Tactile D-Pad & Action Buttons -->
+                    <div class="flex justify-between items-center px-1 sm:px-4">
+                        
+                        <!-- D-PAD CROSS -->
+                        <div class="dpad-wrapper flex flex-col items-center">
+                            <div id="dpad-cross" class="dpad-container">
+                                <!-- Up Button -->
+                                <button type="button" data-gb-btn="up" class="dpad-btn dpad-up" aria-label="Up">
+                                    <span>▲</span>
+                                </button>
+                                <!-- Left Button -->
+                                <button type="button" data-gb-btn="left" class="dpad-btn dpad-left" aria-label="Left">
+                                    <span>◀</span>
+                                </button>
+                                <!-- Center Pivot Bowl -->
+                                <div class="dpad-center"></div>
+                                <!-- Right Button -->
+                                <button type="button" data-gb-btn="right" class="dpad-btn dpad-right" aria-label="Right">
+                                    <span>▶</span>
+                                </button>
+                                <!-- Down Button -->
+                                <button type="button" data-gb-btn="down" class="dpad-btn dpad-down" aria-label="Down">
+                                    <span>▼</span>
+                                </button>
+                            </div>
+                            <span class="text-[9px] font-bold text-slate-500 tracking-wider mt-1.5 uppercase font-mono">D-Pad</span>
+                        </div>
+
+                        <!-- ACTION BUTTONS (B & A) -->
+                        <div class="action-buttons-wrapper flex flex-col items-center">
+                            <div class="action-pod flex items-center justify-between gap-3 sm:gap-4">
+                                <!-- Button B -->
+                                <div class="flex flex-col items-center">
+                                    <button type="button" data-gb-btn="B" class="btn-action btn-b" aria-label="Button B">
+                                        B
+                                    </button>
+                                </div>
+                                <!-- Button A -->
+                                <div class="flex flex-col items-center">
+                                    <button type="button" data-gb-btn="A" class="btn-action btn-a" aria-label="Button A">
+                                        A
+                                    </button>
+                                </div>
+                            </div>
+                            <span class="text-[9px] font-bold text-slate-500 tracking-wider mt-1.5 rotate-[-25deg] uppercase font-mono">Action</span>
+                        </div>
+
+                    </div>
+
+                    <!-- Lower Row: SELECT & START -->
+                    <div class="flex justify-center items-center gap-8 sm:gap-12 mt-3 sm:mt-5">
+                        <div class="flex flex-col items-center">
+                            <div class="pill-pod">
+                                <button type="button" data-gb-btn="select" class="btn-pill" aria-label="Select"></button>
+                            </div>
+                            <span class="text-[9px] font-bold text-slate-400 tracking-widest mt-1 uppercase font-mono">SELECT</span>
+                        </div>
+                        <div class="flex flex-col items-center">
+                            <div class="pill-pod">
+                                <button type="button" data-gb-btn="start" class="btn-pill" aria-label="Start"></button>
+                            </div>
+                            <span class="text-[9px] font-bold text-slate-400 tracking-widest mt-1 uppercase font-mono">START</span>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Mobile Quick Drawer Navigation Tabs (Visible on screens < 1024px) -->
+            <div class="w-full flex lg:hidden gap-1.5 mt-3 p-1.5 bg-slate-900/90 rounded-2xl border border-slate-800 font-mono shadow-md">
+                <button type="button" class="mobile-tab-btn flex-1 py-2 text-[11px] font-bold rounded-xl text-white bg-blue-600 transition cursor-pointer" data-tab="game">
+                    🎮 Game
+                </button>
+                <button type="button" class="mobile-tab-btn flex-1 py-2 text-[11px] font-bold rounded-xl text-slate-400 hover:text-white transition cursor-pointer" data-tab="files">
+                    📁 Files
+                </button>
+                <button type="button" class="mobile-tab-btn flex-1 py-2 text-[11px] font-bold rounded-xl text-slate-400 hover:text-white transition cursor-pointer" data-tab="chat">
+                    💬 Chat & Sync
+                </button>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: CLEAN RELEASE LINK STATUS & LINK CHAT -->
+        <div id="panel-chat-col" class="lg:w-[240px] xl:w-[260px] lg:flex-shrink-0 lg:order-3 order-3 flex flex-col gap-3 w-full">
+
+            <div class="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-lg">
+                <h3 class="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider font-mono">
+                    Link Status
+                </h3>
+
+                <div class="flex items-center justify-between gap-3 bg-slate-950 p-2.5 rounded-xl mb-1.5 border border-slate-800/80">
+                    <span class="text-[10px] text-slate-400 font-mono tracking-wide">YOU</span>
+                    <span id="p1-flag" class="w-3 h-3 rounded-full bg-slate-700" title="Ready"></span>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 bg-slate-950 p-2.5 rounded-xl mb-1.5 border border-slate-800/80">
+                    <span class="text-[10px] text-slate-400 font-mono tracking-wide">OPPONENT</span>
+                    <span id="p2-flag" class="w-3 h-3 rounded-full bg-slate-700" title="Ready"></span>
+                </div>
+
+                <div class="flex justify-between items-center bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
+                    <span class="text-[10px] text-slate-400 font-mono">NAME</span>
+                    <span id="opp-name-tag" class="text-[10px] text-sky-400 font-bold truncate max-w-[140px] font-mono">
+                        NONE
+                    </span>
+                </div>
+            </div>
+
+            <div class="bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-lg flex-1 flex flex-col overflow-hidden max-h-[360px]">
+                <h3 class="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wider font-mono">
+                    Link Chat
+                </h3>
+
+                <div
+                    id="chat-box"
+                    class="flex-1 overflow-y-auto text-[11px] mb-2 space-y-1.5 hide-scroll pr-1 min-h-[140px]"
+                ></div>
+
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        id="chat-input"
+                        placeholder="Say something..."
+                        class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 font-sans"
+                    >
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- KEY MAPPING MODAL -->
+    <div id="keymap-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl flex flex-col gap-4 text-slate-200">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-xl bg-sky-950 border border-sky-700/60 flex items-center justify-center text-sm text-sky-400 font-mono shadow-sm">
+                        ⌨️
+                    </div>
+                    <div>
+                        <h2 class="text-sm sm:text-base font-bold font-mono text-white tracking-wide">
+                            CUSTOM KEYBOARD MAPPING
+                        </h2>
+                        <p class="text-[10px] text-slate-400 font-sans">
+                            Click any key slot to rebind. Saved automatically for your next session.
+                        </p>
+                    </div>
+                </div>
+                <button id="btn-close-keymap" type="button" class="text-slate-400 hover:text-white p-1 text-base cursor-pointer rounded-lg hover:bg-slate-800 transition">
+                    ✕
+                </button>
+            </div>
+
+            <!-- Rebinding Instructions Banner -->
+            <div id="keymap-rebinding-banner" class="hidden bg-amber-950/60 border border-amber-600/70 p-3 rounded-xl text-center font-mono text-xs shadow-inner">
+            </div>
+
+            <!-- Action Slots List -->
+            <div id="keymap-list" class="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+                <!-- Dynamically populated by KeyMappingManager -->
+            </div>
+
+            <!-- Modal Footer Actions -->
+            <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+                <button
+                    id="btn-reset-keymap"
+                    type="button"
+                    class="bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-[11px] font-bold font-mono px-3 py-2 rounded-xl border border-rose-800/60 transition cursor-pointer active:scale-95 shadow-sm"
+                >
+                    RESET DEFAULTS
+                </button>
+                <button
+                    id="btn-done-keymap"
+                    type="button"
+                    class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold font-mono px-4 py-2 rounded-xl transition cursor-pointer shadow-md active:scale-95"
+                >
+                    SAVE & CLOSE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="binjgb.js"></script>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        // Release build: logging disabled
+        const log = (_msg) => {};
+
+        // ============================================================
+        // RAM OFFSETS (Base address = $C000)
+        // ============================================================
+        const OFFSET_PLAYER_DUELVARS = 0x0200;   // $C200 (wPlayerDuelVariables, 256 bytes)
+        const OFFSET_OPPONENT_DUELVARS = 0x0300; // $C300 (wOpponentDuelVariables, 256 bytes)
+        const OFFSET_PLAYER_DECK = 0x0400;       // $C400 (wPlayerDeck)
+        const OFFSET_OPPONENT_DECK = 0x0480;     // $C480 (wOpponentDeck)
+        const OFFSET_NAME_BUFFER = 0x0500;       // $C500 (wNameBuffer in WRAM0)
+        const OFFSET_P1_READY = 0x05FD;          // $C5FD (wP1_Ready)
+        const OFFSET_P2_READY = 0x05FE;          // $C5FE (wP2_Ready)
+        const OFFSET_RNG = 0x0ACA;               // $CACA (wRNG1, wRNG2, wRNGCounter)
+        const OFFSET_OPP_RNG = 0x0BE2;           // $CBE2 (wOppRNG1, wOppRNG2, wOppRNGCounter)
+        const OFFSET_WHOSE_TURN = 0x0C05;        // $CC05 (wWhoseTurn: $C2 = player, $C3 = opp)
+
+        const OFFSET_SERIAL_OP = 0x0B74;         // $CB74 (wSerialOp)
+        const OFFSET_SERIAL_SEND_STATE = 0x0B75; // $CB75 (wSerialSendState)
+        const OFFSET_SERIAL_RECV_STATE = 0x0B76; // $CB76 (wSerialRecvState)
+        const OFFSET_SERIAL_SEND_TOGGLE = 0x0B7E;// $CB7E (wSerialSendBufToggle)
+        const OFFSET_SERIAL_SEND_BUF = 0x0800;   // $C800 (Relocated safe send buffer)
+        const OFFSET_SERIAL_RECV_COUNT = 0x0BA2; // $CBA2 (wSerialRecvCounter)
+        const OFFSET_SERIAL_RECV_BUF = 0x0900;   // $C900 (Relocated safe recv buffer)
+
+        // Freed serial buffer / status offsets
+        const OFFSET_MULLIGAN_SIGNAL = 0x0BA3;   // $CBA3 (wMulliganSignal)
+        const OFFSET_STAGED_RNG = 0x0BA5;        // $CBA5 (wStagedRNG1..3)
+
+        // WRAM Bank 1 Offsets ($D000 - $DFFF):
+        const OFFSET_PLAYER_AVATAR = 0x1625;     // $D625 (wPlayerPortrait)
+        const OFFSET_PLAYER_NAME = 0x1D52;       // $DD52 (wPlayerName_)
+        const OFFSET_OPPONENT_NAME = 0x1D62;     // $DD62 (wOpponentName_)
+        const OFFSET_OPPONENT_AVATAR = 0x1D51;   // $DD51 (wLinkOpponentAvatar)
+        const OFFSET_PLAY_TIME_ENABLE = 0x0AC4;  // $CAC4 (wPlayTimeCounterEnable)
+        const OFFSET_PLAY_TIME_COUNTER = 0x0AC5; // $CAC5 (wPlayTimeCounter, 5 bytes: ticks, sec, min, hrLow, hrHigh)
+
+        const NAME_BUFFER_LENGTH = 0x10;
+        const DECK_SIZE = 0x80;
+        const TX_FULLWIDTH3 = 0x09;
+
+        // Packet states
+        const PACKET_IDLE = 0;
+        const PACKET_CONSUMED = 2;
+        const PACKET_RECEIVED_BY_OPP = 3;
+
+        // Custom portrait avatar IDs (ROM constants)
+        const COSTUM_PIC = 0x2a;     // wPlayerPortrait when using custom player gfx
+        const LINK_OPP_PIC = 0x2b;   // wLinkOpponentAvatar when using custom opponent gfx
+
+        // Signal: wHasCustomAvatar ($CB70) — 0 = stock, 1 = custom portrait available/in use
+        // (BGB confirms label at CB70; CB31 would land inside serial/link WRAM and freeze the game)
+        const OFFSET_HAS_CUSTOM_AVATAR = 0x0B70; // $CB70
+        const OFFSET_SRAM_HAS_CUSTOM_AVATAR = 0x000B; // $A00B (SRA0)
+
+        // ROM bank $2E — BGB shows RO2E:449F etc. File offset = bank*0x4000 + (addr & 0x3FFF)
+        // Palette entries: db 0, db 1, then 4× RGB555 LE (10 bytes total)
+        const ROM_PORTRAIT_BANK      = 0x2E;
+        const ROM_PALETTE_CUSTOM1    = 0xB849F;  // bank 2E:$449F Palettecostum1 (player)
+        const ROM_PALETTE_CUSTOM2    = 0xB84A9;  // bank 2E:$44A9 Palettecostum2 (opponent)
+        const ROM_GFX_OPPONENT       = 0xA1B1A;  // bank 28:$5B18 + 2 CustomOpponentGfx (576 bytes)
+        const ROM_GFX_PLAYER         = 0xA18D8;  // bank 28:$58D6 + 2 CustomPlayerGfx (576 bytes)
+        const PORTRAIT_GFX_BYTES     = 576;
+        const PORTRAIT_PAL_BYTES     = 8;        // pure RGB555 payload
+        const PORTRAIT_PAL_ROM_BYTES = 10;       // db 0, db 1 + 8
+
+        // ============================================================
+        // GLOBAL STATE
+        // ============================================================
+        let isHost = false;
+        let deckSynced = false;
+        let boardSetupSynced = false;
+        let module = null;
+        let emulatorPtr = null;
+        let audio = null;
+        let joypadPtr = null;
+        let keyFuncs = {};
+        let animationFrameReq = null;
+        let wramCachedPtr = null;
+        let lastP1State = null;
+        let peer = null;
+        let connection = null;
+        let myRoomCode = null;
+        let remotePlayerName = "OPPONENT";
+        let currentRomBuffer = null;
+        let originalRomBuffer = null; // pristine ROM bytes — always patch from this, never from a prior patch
+        let currentSavBuffer = null;
+        let liveRomPtr = null;       // wasm malloc ptr to cart ROM (patchable)
+        let liveRomSize = 0;
+
+        // Custom player portrait: { pal: Uint8Array(8), gfx: Uint8Array(576), romPal: Uint8Array(10) }
+        // Persisted in IndexedDB; re-injected on every boot. Opponent portrait is ephemeral.
+        let customPlayerPortrait = null;
+        let customPortraitSent = false; // once per link session until soft-reset
+
+        // Cached opponent identity — survives soft reset (PeerJS stays open).
+        // Ready is intentionally NOT cached across soft reset (duel-only).
+        let cachedOppRawName = null;
+        let cachedOppAvatar = null;
+
+        // FIFO Queue for serial packets
+        const incomingSerialQueue = [];
+
+        // Link liveness (explicit bye on tab close — no periodic traffic)
+        let linkAlive = false;
+
+        /** Soft-reset link handshake after emulator re-init. Keeps PeerJS open. Ready always → 0. */
+        function resetLinkSyncState({ notifyPeer = false } = {}) {
+            deckSynced = false;
+            boardSetupSynced = false;
+            lastP1State = null;
+            lastP1Visual = null;
+            lastP2Visual = null;
+            incomingSerialQueue.length = 0;
+            customPortraitSent = false;
+
+            const wram = getWram();
+            if (wram) {
+                if (cachedOppRawName && cachedOppRawName.length > 0) {
+                    writeOpponentNameBytes(cachedOppRawName);
+                } else if (remotePlayerName && remotePlayerName !== 'OPPONENT' && remotePlayerName !== 'NONE') {
+                    $('opp-name-tag').innerText = remotePlayerName;
+                }
+                if (cachedOppAvatar !== null && cachedOppAvatar !== undefined) {
+                    wram[OFFSET_OPPONENT_AVATAR] = cachedOppAvatar;
+                }
+                wram[OFFSET_P1_READY] = 0;
+                wram[OFFSET_P2_READY] = 0;
+            }
+
+            const p1Flag = $('p1-flag');
+            const p2Flag = $('p2-flag');
+            if (p1Flag) p1Flag.className = 'w-3 h-3 rounded-full bg-slate-700';
+            if (p2Flag) p2Flag.className = 'w-3 h-3 rounded-full bg-slate-700';
+
+            if (notifyPeer && connection?.open) {
+                connection.send({ type: 'peer_soft_reset' });
+            }
+        }
+
+        function clearLinkCaches() {
+            cachedOppRawName = null;
+            cachedOppAvatar = null;
+            deckSynced = false;
+            boardSetupSynced = false;
+            lastP1State = null;
+            incomingSerialQueue.length = 0;
+            remotePlayerName = 'OPPONENT';
+            const nameTag = $('opp-name-tag');
+            if (nameTag) nameTag.innerText = 'NONE';
+            const p1Flag = $('p1-flag');
+            const p2Flag = $('p2-flag');
+            if (p1Flag) p1Flag.className = 'w-3 h-3 rounded-full bg-slate-700';
+            if (p2Flag) p2Flag.className = 'w-3 h-3 rounded-full bg-slate-700';
+        }
+
+        function handlePartnerGone(reason) {
+            if (!linkAlive && !connection) return;
+            linkAlive = false;
+            const wasConn = connection;
+            connection = null;
+            try { wasConn?.close(); } catch (_) {}
+            clearLinkCaches();
+            setConnectionStatus('PARTNER DISCONNECTED', 'text-orange-400 font-bold uppercase');
+            addChatMessage('SYSTEM', reason || 'Peer connection closed.');
+        }
+
+        /** Best-effort goodbye so the other side updates Status immediately on tab close. */
+        function sendByeAndClose() {
+            if (!connection) return;
+            try {
+                if (connection.open) {
+                    connection.send({ type: 'bye' });
+                }
+            } catch (_) {}
+            try { connection.close(); } catch (_) {}
+            linkAlive = false;
+            connection = null;
+        }
+
+        // ============================================================
+        // CHARACTER MAP
+        // ============================================================
+        const GBC_FULLWIDTH_MAP = {
+            'A': 0x30, 'B': 0x31, 'C': 0x32, 'D': 0x33, 'E': 0x34, 'F': 0x35, 'G': 0x36, 'H': 0x37,
+            'I': 0x38, 'J': 0x39, 'K': 0x3a, 'L': 0x3b, 'M': 0x3c, 'N': 0x3d, 'O': 0x3e, 'P': 0x3f,
+            'Q': 0x40, 'R': 0x41, 'S': 0x42, 'T': 0x43, 'U': 0x44, 'V': 0x45, 'W': 0x46, 'X': 0x47,
+            'Y': 0x48, 'Z': 0x49,
+            'a': 0x64, 'b': 0x65, 'c': 0x4b, 'd': 0x66, 'e': 0x67, 'f': 0x68, 'g': 0x4a, 'h': 0x69,
+            'i': 0x6a, 'j': 0x6b, 'k': 0x6c, 'l': 0x6d, 'm': 0x4c, 'n': 0x6e, 'o': 0x6f, 'p': 0x70,
+            'q': 0x71, 'r': 0x8e, 's': 0x72, 't': 0x73, 'u': 0x74, 'v': 0x75, 'w': 0x76, 'x': 0x77,
+            'y': 0x78, 'z': 0x79,
+            '0': 0x60, '1': 0x61, '2': 0x62, '3': 0x63, '4': 0x64, '5': 0x65, '6': 0x66, '7': 0x67,
+            '8': 0x68, '9': 0x69,
+            ' ': 0x70, '!': 0x6e, '?': 0x6f, '&': 0x5d, '+': 0x6a, '-': 0x6b, '.': 0x77, '·': 0x77
+        };
+
+        const REVERSE_GBC_MAP = Object.fromEntries(
+            Object.entries(GBC_FULLWIDTH_MAP).map(([k, v]) => [v, k])
+        );
+
+        function getExport(name) {
+            if (!module) return null;
+            const names = [name, `_${name}`, `emulator_${name}`, `_emulator_${name}`, name.replace('emulator_', '')];
+            for (const n of names) {
+                if (typeof module[n] === 'function') return module[n];
+                if (module.asm && typeof module.asm[n] === 'function') return module.asm[n];
+            }
+            return null;
+        }
+
+        function makeWasmBuffer(ptr, size) {
+            return new Uint8Array(module.HEAP8.buffer, ptr, size);
+        }
+
+        // ============================================================
+        // AUDIO
+        // ============================================================
+        class GameAudio {
+            constructor(m, e, ctx = null) {
+                // Reuse the AudioContext that was created before the emulator,
+                // so the emulator and Web Audio use exactly the same sample rate.
+                this.ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+                this.module = m;
+                this.muted = false;
+                this.gain = this.ctx.createGain();
+                this.gain.gain.value = 1;
+                this.gain.connect(this.ctx.destination);
+                const getPtr = getExport('get_audio_buffer_ptr');
+                const getCap = getExport('get_audio_buffer_capacity');
+                if (getPtr && getCap) {
+                    this.ptr = getPtr(e);
+                    this.capacity = getCap(e);
+                    this.buffer = new Uint8Array(this.module.HEAP8.buffer, this.ptr, this.capacity);
+                }
+                this.startSec = 0;
+            }
+
+            setMuted(muted) {
+                this.muted = !!muted;
+                if (this.gain) {
+                    this.gain.gain.value = this.muted ? 0 : 1;
+                }
+                const icon = $('audio-icon');
+                if (icon) icon.innerText = this.muted ? '🔇' : '🔊';
+            }
+
+            toggleMute() {
+                this.setMuted(!this.muted);
+                if (!this.muted && this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                return this.muted;
+            }
+
+            push() {
+                if (!this.ctx || this.muted) return;
+                if (this.ctx.state === 'suspended') return;
+                if (!this.buffer) return;
+
+                const nowSec = this.ctx.currentTime;
+                const latency = 0.1;
+                const nowPlusLatency = nowSec + latency;
+
+                // Keep the audio queue continuous. This mirrors binjgb's
+                // scheduling strategy: only reset when we actually fell
+                // behind the Web Audio clock.
+                this.startSec = this.startSec || nowPlusLatency;
+                if (this.startSec < nowSec) {
+                    this.startSec = nowPlusLatency;
+                }
+
+                const frames = 4096;
+                const maxSamples = Math.floor((this.buffer.length || 0) / 2);
+                const useFrames = Math.min(frames, maxSamples || frames);
+
+                const buffer = this.ctx.createBuffer(2, useFrames, this.ctx.sampleRate);
+                const c0 = buffer.getChannelData(0);
+                const c1 = buffer.getChannelData(1);
+
+                for (let i = 0; i < useFrames; i++) {
+                    c0[i] = (this.buffer[2 * i] / 255) * 0.4;
+                    c1[i] = (this.buffer[2 * i + 1] / 255) * 0.4;
+                }
+
+                const source = this.ctx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(this.gain);
+                source.onended = () => {
+                    try { source.disconnect(); } catch (_) {}
+                };
+                source.start(this.startSec);
+                this.startSec += useFrames / this.ctx.sampleRate;
+            }
+        }
+
+        // ============================================================
+        // INTEGER PIXEL SCALE (HARDWARE-ACCELERATED & ZERO CLIPPING)
+        // ============================================================
+        let _lastScaleKey = '';
+        let _lastDeviceScale = 0;
+        let _frameSrcCanvas = null;
+        let _frameSrcCtx = null;
+        let _displayCtx = null;
+        let _reusableImg = null;
+
+        function getFrameSrc() {
+            if (!_frameSrcCanvas) {
+                _frameSrcCanvas = document.createElement('canvas');
+                _frameSrcCanvas.width = 160;
+                _frameSrcCanvas.height = 144;
+                _frameSrcCtx = _frameSrcCanvas.getContext('2d', { alpha: false });
+            }
+            return { canvas: _frameSrcCanvas, ctx: _frameSrcCtx };
+        }
+
+        function disableSmoothing(ctx) {
+            if (!ctx) return;
+            ctx.imageSmoothingEnabled = false;
+            ctx.mozImageSmoothingEnabled = false;
+            ctx.webkitImageSmoothingEnabled = false;
+            ctx.msImageSmoothingEnabled = false;
+        }
+
+        function fitCanvasIntegerScale() {
+            const canvas = $('gb-canvas');
+            const wrap = $('gb-screen-wrap');
+            if (!canvas || !wrap) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const vw = document.documentElement.clientWidth || window.innerWidth || 360;
+            const vh = window.innerHeight || 640;
+            const isMobile = vw < 1024;
+
+            let deviceScale;
+            if (isMobile) {
+                // Phone mode: maximize horizontal size on phone display
+                const availCssW = Math.max(160, vw - 6);
+                const availDevW = availCssW * dpr;
+                deviceScale = Math.max(1, Math.floor(availDevW / 160));
+            } else {
+                // Desktop mode: fit the whole handheld Game Boy console on the monitor
+                // Header (50px) + chassis bezel accents & controller area (~270px) + page margins (~20px) = ~340px
+                const reservedY = 340;
+                const maxScreenH = Math.max(144, vh - reservedY);
+                const chassis = $('gb-chassis');
+                const centerCol = chassis?.parentElement;
+                const colW = centerCol?.clientWidth || (vw - 520);
+                const maxScreenW = Math.max(160, colW - 8);
+
+                const maxDevH = maxScreenH * dpr;
+                const maxDevW = maxScreenW * dpr;
+
+                const scaleByH = Math.floor(maxDevH / 144);
+                const scaleByW = Math.floor(maxDevW / 160);
+
+                // Cap at maximum ~3x on standard desktop so the whole console fits comfortably
+                const maxAllowedDevScale = Math.max(1, Math.round(3 * dpr));
+                deviceScale = Math.max(1, Math.min(maxAllowedDevScale, scaleByH, scaleByW));
+            }
+
+            // EXACT integer buffer dimensions:
+            const bufW = 160 * deviceScale;
+            const bufH = 144 * deviceScale;
+
+            // EXACT CSS dimensions so that cssW * dpr == bufW (1:1 physical pixel grid mapping!)
+            const cssW = bufW / dpr;
+            const cssH = bufH / dpr;
+
+            if (deviceScale === _lastDeviceScale &&
+                canvas.width === bufW &&
+                canvas.style.width === cssW + 'px') {
+                return;
+            }
+            _lastDeviceScale = deviceScale;
+
+            canvas.style.width = cssW + 'px';
+            canvas.style.height = cssH + 'px';
+            wrap.style.width = cssW + 'px';
+            wrap.style.height = cssH + 'px';
+
+            if (canvas.width !== bufW || canvas.height !== bufH) {
+                canvas.width = bufW;
+                canvas.height = bufH;
+                _displayCtx = null;
+            }
+
+            if (!_displayCtx) {
+                _displayCtx = canvas.getContext('2d', { alpha: false });
+            }
+            disableSmoothing(_displayCtx);
+        }
+
+        function blitFrame(frameData) {
+            const { canvas: src, ctx: srcCtx } = getFrameSrc();
+            if (!_reusableImg) {
+                _reusableImg = srcCtx.createImageData(160, 144);
+            }
+            _reusableImg.data.set(frameData);
+            srcCtx.putImageData(_reusableImg, 0, 0);
+
+            const canvas = $('gb-canvas');
+            if (!canvas) return;
+            if (!_displayCtx) {
+                _displayCtx = canvas.getContext('2d', { alpha: false });
+            }
+            disableSmoothing(_displayCtx);
+            // Hardware GPU texture blit (high-performance integer scaling)
+            _displayCtx.drawImage(src, 0, 0, 160, 144, 0, 0, canvas.width, canvas.height);
+        }
+
+        // ============================================================
+        // CUSTOM PORTRAIT CODEC (RGBDS-style 48×48 / 2bpp)
+        // ============================================================
+        const PortraitCodec = (() => {
+            const WIDTH = 48, HEIGHT = 48, TILES_X = 6, TILES_Y = 6;
+            const TILE_BYTES = 16;
+            const GFX_BYTES = TILES_X * TILES_Y * TILE_BYTES; // 576
+            const RGBDS_TRANSPARENT = 0x8000;
+            const RGBDS_UNUSED = 0xffff;
+            const ALPHA_TRANSPARENT = 0x10;
+            const ALPHA_OPAQUE = 0xf0;
+
+            function cgb555(r, g, b) {
+                return (r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10);
+            }
+            function cgbToRgb888(v) {
+                return {
+                    r: ((v & 31) * 255 + 15) / 31,
+                    g: (((v >> 5) & 31) * 255 + 15) / 31,
+                    b: (((v >> 10) & 31) * 255 + 15) / 31
+                };
+            }
+            function luminance555(v) {
+                const r = v & 31, g = (v >> 5) & 31, b = (v >> 10) & 31;
+                return 2126 * r + 7152 * g + 722 * b;
+            }
+            function grayIndex(r, hasTransparent) {
+                const gray = 255 - r;
+                const maxOpaque = hasTransparent ? 3 : 4;
+                return Math.floor(gray * maxOpaque / 256) + (hasTransparent ? 1 : 0);
+            }
+            function isGray(rgb) { return rgb.r === rgb.g && rgb.g === rgb.b; }
+            function alphaClass(a) {
+                if (a < ALPHA_TRANSPARENT) return 'transparent';
+                if (a >= ALPHA_OPAQUE) return 'opaque';
+                return 'ambiguous';
+            }
+
+            function readPngMetadata(bytes) {
+                const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+                for (let i = 0; i < 8; i++) if (bytes[i] !== sig[i]) {
+                    throw new Error('Not a valid PNG (bad signature).');
+                }
+                let off = 8, ihdr = null, plte = [], trns = null;
+                while (off + 12 <= bytes.length) {
+                    const len = new DataView(bytes.buffer, bytes.byteOffset + off, 4).getUint32(0);
+                    const type = String.fromCharCode(bytes[off + 4], bytes[off + 5], bytes[off + 6], bytes[off + 7]);
+                    const start = off + 8, end = start + len;
+                    if (end + 4 > bytes.length) throw new Error('PNG chunk extends past EOF.');
+                    if (type === 'IHDR') {
+                        if (len !== 13) throw new Error('Invalid IHDR length.');
+                        const dv = new DataView(bytes.buffer, bytes.byteOffset + start, len);
+                        ihdr = {
+                            width: dv.getUint32(0), height: dv.getUint32(4),
+                            bitDepth: dv.getUint8(8), colorType: dv.getUint8(9),
+                            compression: dv.getUint8(10), filter: dv.getUint8(11), interlace: dv.getUint8(12)
+                        };
+                    } else if (type === 'PLTE') {
+                        if (len % 3 !== 0) throw new Error('Invalid PLTE length.');
+                        plte = [];
+                        for (let i = 0; i < len; i += 3) plte.push({ r: bytes[start + i], g: bytes[start + i + 1], b: bytes[start + i + 2] });
+                    } else if (type === 'tRNS') {
+                        trns = Array.from(bytes.slice(start, end));
+                    } else if (type === 'IEND') break;
+                    off = end + 4;
+                }
+                if (!ihdr) throw new Error('PNG missing IHDR.');
+                if (ihdr.compression !== 0 || ihdr.filter !== 0) throw new Error('Unsupported PNG compression/filter.');
+                return { ihdr, plte, trns, indexed: ihdr.colorType === 3 };
+            }
+
+            async function decodeImage(file) {
+                const ab = await file.arrayBuffer();
+                const bytes = new Uint8Array(ab);
+                const meta = readPngMetadata(bytes);
+                if (meta.ihdr.width !== WIDTH || meta.ihdr.height !== HEIGHT) {
+                    throw new Error(`Expected 48×48, got ${meta.ihdr.width}×${meta.ihdr.height}.`);
+                }
+                if (meta.indexed && !meta.plte.length) throw new Error('Indexed PNG missing PLTE.');
+
+                const url = URL.createObjectURL(file);
+                try {
+                    const img = new Image();
+                    img.decoding = 'async';
+                    img.src = url;
+                    await img.decode();
+                    if (img.naturalWidth !== WIDTH || img.naturalHeight !== HEIGHT) {
+                        throw new Error(`Decoded size ${img.naturalWidth}×${img.naturalHeight}, not 48×48.`);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = WIDTH; canvas.height = HEIGHT;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+                    ctx.drawImage(img, 0, 0);
+                    return { meta, pixels: ctx.getImageData(0, 0, WIDTH, HEIGHT).data, file };
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
+            }
+
+            function extractEffectiveColors(decoded) {
+                const { pixels } = decoded;
+                const colorsByCgb = new Map();
+                let hasTransparent = false;
+                let firstAmbiguous = null;
+                for (let i = 0, p = 0; i < WIDTH * HEIGHT; i++, p += 4) {
+                    const r = pixels[p], g = pixels[p + 1], b = pixels[p + 2], a = pixels[p + 3];
+                    const ac = alphaClass(a);
+                    if (ac === 'ambiguous' && !firstAmbiguous) firstAmbiguous = { x: i % WIDTH, y: Math.floor(i / WIDTH), alpha: a };
+                    if (ac === 'transparent') { hasTransparent = true; continue; }
+                    if (ac !== 'opaque') continue;
+                    const cgb = cgb555(r, g, b);
+                    if (!colorsByCgb.has(cgb)) colorsByCgb.set(cgb, { cgb, rgb: { r, g, b } });
+                }
+                if (firstAmbiguous) {
+                    throw new Error(`Ambiguous alpha ${firstAmbiguous.alpha} at (${firstAmbiguous.x},${firstAmbiguous.y}). Use fully opaque or fully transparent.`);
+                }
+                const opaque = Array.from(colorsByCgb.values());
+                const effectiveCount = opaque.length + (hasTransparent ? 1 : 0);
+                if (effectiveCount > 4) {
+                    throw new Error(`${effectiveCount} effective colors after RGB555 reduction (max 4).`);
+                }
+                return { colorsByCgb, opaque, hasTransparent };
+            }
+
+            function detectIndexedOrder(decoded, opaqueSet) {
+                const { meta } = decoded;
+                if (!meta.indexed) return null;
+                const ordered = [];
+                const seen = new Set();
+                for (const rgb of meta.plte) {
+                    const cgb = cgb555(rgb.r, rgb.g, rgb.b);
+                    if (opaqueSet.has(cgb) && !seen.has(cgb)) {
+                        seen.add(cgb);
+                        ordered.push(cgb);
+                    }
+                }
+                for (const cgb of opaqueSet) if (!seen.has(cgb)) {
+                    throw new Error(`Indexed PLTE missing color RGB555=0x${cgb.toString(16)}.`);
+                }
+                return ordered;
+            }
+
+            function generatePalette(decoded, extracted) {
+                const { opaque, hasTransparent } = extracted;
+                const palette = new Uint16Array(4);
+                palette.fill(RGBDS_UNUSED);
+                if (hasTransparent) palette[0] = RGBDS_TRANSPARENT;
+
+                if (decoded.meta.indexed) {
+                    const ordered = detectIndexedOrder(decoded, new Set(opaque.map(x => x.cgb)));
+                    let i = hasTransparent ? 1 : 0;
+                    for (const cgb of ordered) palette[i++] = cgb;
+                    return { palette, mode: 'indexed PNG palette order' };
+                }
+
+                let grayscaleOk = true;
+                const bins = new Set();
+                for (const c of opaque) {
+                    if (!isGray(c.rgb)) { grayscaleOk = false; break; }
+                    const idx = grayIndex(c.rgb.r, hasTransparent);
+                    if (bins.has(idx)) { grayscaleOk = false; break; }
+                    bins.add(idx);
+                }
+                if (grayscaleOk) {
+                    palette.fill(RGBDS_TRANSPARENT);
+                    for (const c of opaque) palette[grayIndex(c.rgb.r, hasTransparent)] = c.cgb;
+                    return { palette, mode: 'RGBDS grayscale bins' };
+                }
+
+                opaque.sort((a, b) => luminance555(b.cgb) - luminance555(a.cgb));
+                let i = hasTransparent ? 1 : 0;
+                for (const c of opaque) palette[i++] = c.cgb;
+                return { palette, mode: 'RGBDS RGB luminance' };
+            }
+
+            function makeIndexPixels(decoded, palette) {
+                const indices = new Uint8Array(WIDTH * HEIGHT);
+                const lut = new Map();
+                for (let i = 0; i < 4; i++) {
+                    if (palette[i] !== RGBDS_UNUSED && palette[i] !== RGBDS_TRANSPARENT) lut.set(palette[i], i);
+                }
+                for (let i = 0, p = 0; i < WIDTH * HEIGHT; i++, p += 4) {
+                    const r = decoded.pixels[p], g = decoded.pixels[p + 1], b = decoded.pixels[p + 2], a = decoded.pixels[p + 3];
+                    if (alphaClass(a) === 'transparent') {
+                        indices[i] = 0;
+                        continue;
+                    }
+                    const cgb = cgb555(r, g, b);
+                    const idx = lut.get(cgb);
+                    if (idx === undefined) throw new Error(`Color RGB555=0x${cgb.toString(16)} missing from palette.`);
+                    indices[i] = idx;
+                }
+                return indices;
+            }
+
+            function encode2bpp(indices) {
+                const out = new Uint8Array(GFX_BYTES);
+                let o = 0;
+                for (let ty = 0; ty < TILES_Y; ty++) {
+                    for (let tx = 0; tx < TILES_X; tx++) {
+                        for (let y = 0; y < 8; y++) {
+                            let lo = 0, hi = 0;
+                            for (let x = 0; x < 8; x++) {
+                                const idx = indices[(ty * 8 + y) * WIDTH + (tx * 8 + x)] & 3;
+                                lo |= (idx & 1) << (7 - x);
+                                hi |= ((idx >> 1) & 1) << (7 - x);
+                            }
+                            out[o++] = lo;
+                            out[o++] = hi;
+                        }
+                    }
+                }
+                return out;
+            }
+
+            function encodePalPayload(palette) {
+                const out = new Uint8Array(8);
+                for (let i = 0; i < 4; i++) {
+                    const v = palette[i];
+                    out[i * 2] = v & 0xff;
+                    out[i * 2 + 1] = (v >> 8) & 0xff;
+                }
+                return out;
+            }
+
+            function encodePalRom(palette) {
+                const out = new Uint8Array(10);
+                out[0] = 0;
+                out[1] = 1;
+                out.set(encodePalPayload(palette), 2);
+                return out;
+            }
+
+            function renderPreview(indices, palette, canvas) {
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                const image = ctx.createImageData(WIDTH, HEIGHT);
+                for (let i = 0; i < indices.length; i++) {
+                    const v = palette[indices[i]];
+                    const o = i * 4;
+                    if (v === RGBDS_TRANSPARENT || v === RGBDS_UNUSED) {
+                        image.data[o] = 32; image.data[o + 1] = 32; image.data[o + 2] = 32; image.data[o + 3] = 255;
+                    } else {
+                        const c = cgbToRgb888(v);
+                        image.data[o] = Math.round(c.r);
+                        image.data[o + 1] = Math.round(c.g);
+                        image.data[o + 2] = Math.round(c.b);
+                        image.data[o + 3] = 255;
+                    }
+                }
+                ctx.putImageData(image, 0, 0);
+            }
+
+            async function analyzeFile(file) {
+                const decoded = await decodeImage(file);
+                const extracted = extractEffectiveColors(decoded);
+                const generated = generatePalette(decoded, extracted);
+                const indices = makeIndexPixels(decoded, generated.palette);
+                const gfx = encode2bpp(indices);
+                const pal = encodePalPayload(generated.palette);
+                const romPal = encodePalRom(generated.palette);
+                return { extracted, generated, indices, gfx, pal, romPal };
+            }
+
+            return { analyzeFile, renderPreview, cgbToRgb888, RGBDS_TRANSPARENT, RGBDS_UNUSED, GFX_BYTES };
+        })();
+
+        function patchRomBytes(romView, offset, bytes) {
+            if (!romView || offset + bytes.length > romView.length) {
+                console.warn('ROM patch out of range', offset, bytes.length, romView?.length);
+                return false;
+            }
+            romView.set(bytes, offset);
+            return true;
+        }
+
+        function applyPlayerPortraitToRom(romBuffer, portrait) {
+            if (!portrait) return romBuffer;
+            const view = romBuffer instanceof Uint8Array ? romBuffer : new Uint8Array(romBuffer);
+            patchRomBytes(view, ROM_PALETTE_CUSTOM1, portrait.romPal);
+            patchRomBytes(view, ROM_GFX_PLAYER, portrait.gfx);
+            return view.buffer === romBuffer ? romBuffer : view.buffer;
+        }
+
+        function applyOpponentPortraitToRom(romView, portrait) {
+            if (!portrait || !romView) return;
+            patchRomBytes(romView, ROM_PALETTE_CUSTOM2, portrait.romPal);
+            patchRomBytes(romView, ROM_GFX_OPPONENT, portrait.gfx);
+        }
+
+        function getLiveRomView() {
+            if (liveRomPtr && module) {
+                return makeWasmBuffer(liveRomPtr, liveRomSize);
+            }
+            if (currentRomBuffer) {
+                return new Uint8Array(currentRomBuffer instanceof ArrayBuffer ? currentRomBuffer : currentRomBuffer);
+            }
+            return null;
+        }
+
+        /** Tell the ROM about custom-avatar state in both WRAM and SRAM. */
+        async function setHasCustomAvatar(active) {
+            const value = active ? 1 : 0;
+
+            const wram = getWram();
+            if (wram) {
+                wram[OFFSET_HAS_CUSTOM_AVATAR] = value;
+            }
+
+            // Persist the same flag in SRAM bank 0 ($A000-$BFFF).
+            // BGB reports sHasCustomAvatar at SRA0:$A00B, so the
+            // corresponding byte in the exported SRAM buffer is $000B.
+            const sram = getEmulatorSramData();
+            if (!sram || sram.length <= OFFSET_SRAM_HAS_CUSTOM_AVATAR) return;
+
+            sram[OFFSET_SRAM_HAS_CUSTOM_AVATAR] = value;
+
+            const extRamFileNew = getExport('ext_ram_file_data_new');
+            const getFileDataPtr = getExport('get_file_data_ptr');
+            const getFileDataSize = getExport('get_file_data_size');
+            const readExtRam = getExport('emulator_read_ext_ram');
+            const fileDataDelete = getExport('file_data_delete');
+
+            if (!extRamFileNew || !getFileDataPtr || !getFileDataSize || !readExtRam || !fileDataDelete) return;
+
+            const fileDataPtr = extRamFileNew(emulatorPtr);
+            const bufPtr = getFileDataPtr(fileDataPtr);
+            const bufSize = getFileDataSize(fileDataPtr);
+
+            if (sram.length <= bufSize) {
+                makeWasmBuffer(bufPtr, bufSize).fill(0).set(sram);
+                readExtRam(emulatorPtr, fileDataPtr);
+            }
+            fileDataDelete(fileDataPtr);
+
+            // Keep browser SRAM storage in sync immediately instead of waiting
+            // for the periodic 5-second save.
+            await saveSramToStorage(sram);
+        }
+
+        function portraitToTransfer(portrait) {
+            if (!portrait) return null;
+            return {
+                pal: Array.from(portrait.pal),
+                gfx: Array.from(portrait.gfx),
+                romPal: Array.from(portrait.romPal)
+            };
+        }
+
+        function portraitFromTransfer(data) {
+            if (!data || !data.gfx || !data.romPal) return null;
+            if (data.gfx.length !== PORTRAIT_GFX_BYTES) return null;
+            if (data.romPal.length !== PORTRAIT_PAL_ROM_BYTES) return null;
+            return {
+                pal: new Uint8Array(data.pal || data.romPal.slice(2)),
+                gfx: new Uint8Array(data.gfx),
+                romPal: new Uint8Array(data.romPal)
+            };
+        }
+
+        const PORTRAIT_IDB_KEY = 'custom_player_portrait';
+
+        async function savePlayerPortraitToStorage(portrait) {
+            if (!portrait) {
+                try {
+                    const db = await openSaveDB();
+                    return new Promise((resolve) => {
+                        const tx = db.transaction(DB_STORE, 'readwrite');
+                        tx.objectStore(DB_STORE).delete(PORTRAIT_IDB_KEY);
+                        tx.oncomplete = () => resolve(true);
+                        tx.onerror = () => resolve(false);
+                    });
+                } catch (_) { return false; }
+            }
+            const payload = {
+                pal: Array.from(portrait.pal),
+                gfx: Array.from(portrait.gfx),
+                romPal: Array.from(portrait.romPal)
+            };
+            try {
+                const db = await openSaveDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(DB_STORE, 'readwrite');
+                    tx.objectStore(DB_STORE).put(payload, PORTRAIT_IDB_KEY);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (_) { return false; }
+        }
+
+        async function loadPlayerPortraitFromStorage() {
+            try {
+                const db = await openSaveDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(DB_STORE, 'readonly');
+                    const req = tx.objectStore(DB_STORE).get(PORTRAIT_IDB_KEY);
+                    req.onsuccess = () => {
+                        const data = req.result;
+                        if (!data || !data.gfx || !data.romPal) { resolve(null); return; }
+                        if (data.gfx.length !== PORTRAIT_GFX_BYTES || data.romPal.length !== PORTRAIT_PAL_ROM_BYTES) {
+                            resolve(null); return;
+                        }
+                        resolve({
+                            pal: new Uint8Array(data.pal || data.romPal.slice(2)),
+                            gfx: new Uint8Array(data.gfx),
+                            romPal: new Uint8Array(data.romPal)
+                        });
+                    };
+                    req.onerror = () => resolve(null);
+                });
+            } catch (_) { return null; }
+        }
+
+        function updateAvatarUi(portrait, statusText, ok) {
+            const status = $('avatar-status');
+            const clearBtn = $('btn-clear-avatar');
+            const preview = $('avatar-preview');
+            const palEl = $('avatar-palette');
+            if (status) {
+                status.textContent = statusText || (portrait ? 'Custom avatar ready' : 'No custom avatar');
+                status.className = `text-[9px] mt-1 font-mono ${ok === false ? 'text-rose-400' : portrait ? 'text-emerald-400' : 'text-slate-500'}`;
+            }
+            if (clearBtn) clearBtn.disabled = !portrait;
+            if (palEl) {
+                palEl.innerHTML = '';
+                if (portrait) {
+                    for (let i = 0; i < 4; i++) {
+                        const lo = portrait.romPal[2 + i * 2];
+                        const hi = portrait.romPal[3 + i * 2];
+                        const v = lo | (hi << 8);
+                        const sw = document.createElement('div');
+                        sw.className = 'w-5 h-5 rounded border border-slate-600';
+                        if (v === PortraitCodec.RGBDS_TRANSPARENT || v === 0xffff) {
+                            sw.style.background = 'repeating-conic-gradient(#333 0 25%,#666 0 50%) 0/8px 8px';
+                        } else {
+                            const c = PortraitCodec.cgbToRgb888(v);
+                            sw.style.background = `rgb(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)})`;
+                        }
+                        palEl.appendChild(sw);
+                    }
+                }
+            }
+            if (preview && !portrait) {
+                const ctx = preview.getContext('2d');
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, 48, 48);
+            }
+        }
+
+        async function handleAvatarFile(file) {
+            if (!file) return;
+            try {
+                if (file.type && file.type !== 'image/png' && !/\.png$/i.test(file.name)) {
+                    updateAvatarUi(null, 'PNG only', false);
+                    return;
+                }
+                const result = await PortraitCodec.analyzeFile(file);
+                const portrait = { pal: result.pal, gfx: result.gfx, romPal: result.romPal };
+                customPlayerPortrait = portrait;
+                await savePlayerPortraitToStorage(portrait);
+
+                // Patch live ROM from pristine original so we never stack writes on bad offsets
+                if (originalRomBuffer && liveRomPtr && module) {
+                    const fresh = new Uint8Array(originalRomBuffer.slice(0));
+                    applyPlayerPortraitToRom(fresh, portrait);
+                    makeWasmBuffer(liveRomPtr, liveRomSize).set(fresh.subarray(0, Math.min(fresh.length, liveRomSize)));
+                    currentRomBuffer = fresh.buffer;
+                } else if (originalRomBuffer) {
+                    const fresh = new Uint8Array(originalRomBuffer.slice(0));
+                    applyPlayerPortraitToRom(fresh, portrait);
+                    currentRomBuffer = fresh.buffer;
+                }
+                await setHasCustomAvatar(true);
+
+                PortraitCodec.renderPreview(result.indices, result.generated.palette, $('avatar-preview'));
+                const n = result.extracted.opaque.length + (result.extracted.hasTransparent ? 1 : 0);
+                updateAvatarUi(portrait, `OK · ${n} colors · ${result.generated.mode}`, true);
+                customPortraitSent = false;
+                addChatMessage('SYSTEM', 'Custom avatar saved — It is now available in the PROFILE');
+            } catch (e) {
+                updateAvatarUi(customPlayerPortrait, e instanceof Error ? e.message : String(e), false);
+            }
+        }
+
+        function sendCustomPortraitIfNeeded() {
+            if (!connection?.open || !customPlayerPortrait || customPortraitSent) return;
+            const wram = getWram();
+            if (!wram || wram[OFFSET_PLAYER_AVATAR] !== COSTUM_PIC) return;
+
+            connection.send({
+                type: 'custom_portrait',
+                portrait: portraitToTransfer(customPlayerPortrait)
+            });
+            customPortraitSent = true;
+        }
+
+        function applyIncomingOpponentPortrait(data) {
+            const portrait = portraitFromTransfer(data);
+            if (!portrait) return;
+            const live = getLiveRomView();
+            if (live) applyOpponentPortraitToRom(live, portrait);
+            if (currentRomBuffer) {
+                const view = new Uint8Array(currentRomBuffer instanceof ArrayBuffer ? currentRomBuffer : currentRomBuffer);
+                applyOpponentPortraitToRom(view, portrait);
+            }
+            const wram = getWram();
+            if (wram) {
+                wram[OFFSET_OPPONENT_AVATAR] = LINK_OPP_PIC;
+                cachedOppAvatar = LINK_OPP_PIC;
+            }
+            addChatMessage('SYSTEM', 'Opponent custom avatar received and injected.');
+        }
+
+        // ============================================================
+        // WRAM ACCESS & SAFE WRITING
+        // ============================================================
+        function getWram() {
+            if (!module || !emulatorPtr) return null;
+            if (wramCachedPtr && wramCachedPtr.buffer && wramCachedPtr.buffer.byteLength > 0) {
+                return wramCachedPtr;
+            }
+            const getW = getExport('get_wram_ptr') || getExport('get_wram');
+            if (getW) {
+                const ptr = getW(emulatorPtr);
+                if (ptr) {
+                    wramCachedPtr = new Uint8Array(module.HEAP8.buffer, ptr, 0x8000);
+                    return wramCachedPtr;
+                }
+            }
+            return null;
+        }
+
+        function getLocalPlayerName() {
+            const name = readGbcString(OFFSET_PLAYER_NAME);
+            return (name && name.length > 0) ? name : "YOU";
+        }
+
+        function readRawPlayerName() {
+            const wram = getWram();
+            if (!wram) return [];
+            const name = [];
+            for (let i = 0; i < NAME_BUFFER_LENGTH; i++) {
+                const byte = wram[OFFSET_PLAYER_NAME + i];
+                if (byte === 0x00) break;
+                name.push(byte);
+            }
+            return name;
+        }
+
+        function readGbcString(offset, maxBytes = 16) {
+            const wram = getWram();
+            if (!wram) return "";
+            let name = "";
+            for (let i = 0; i < maxBytes; i++) {
+                const byte = wram[offset + i];
+                if (byte === 0x50 || byte === 0x00) break;
+                if (byte === TX_FULLWIDTH3) continue;
+                name += REVERSE_GBC_MAP[byte] || '';
+            }
+            return name.trim();
+        }
+
+        function writeOpponentNameBytes(rawNameBytes) {
+            const wram = getWram();
+            if (!wram || !Array.isArray(rawNameBytes) || rawNameBytes.length === 0) return;
+
+            const nameSlice = rawNameBytes.slice(0, NAME_BUFFER_LENGTH - 1);
+
+            // 1. Write to wOpponentName_ ($DD62 in WRAM1)
+            wram.fill(0, OFFSET_OPPONENT_NAME, OFFSET_OPPONENT_NAME + NAME_BUFFER_LENGTH);
+            wram.set(nameSlice, OFFSET_OPPONENT_NAME);
+            wram[OFFSET_OPPONENT_NAME + nameSlice.length] = 0x00;
+
+            // 2. Also write to wNameBuffer ($C500 in WRAM0)
+            wram.fill(0, OFFSET_NAME_BUFFER, OFFSET_NAME_BUFFER + NAME_BUFFER_LENGTH);
+            wram.set(nameSlice, OFFSET_NAME_BUFFER);
+            wram[OFFSET_NAME_BUFFER + nameSlice.length] = 0x00;
+
+            $('opp-name-tag').innerText = readGbcString(OFFSET_OPPONENT_NAME) || remotePlayerName || "LINK PARTNER";
+        }
+
+        function writeOpponentDeckBytes(deckCards) {
+            const wram = getWram();
+            if (!wram || !Array.isArray(deckCards) || deckCards.length === 0) return;
+
+            const cards = deckCards.slice(0, DECK_SIZE);
+            wram.set(new Uint8Array(cards), OFFSET_OPPONENT_DECK);
+        }
+
+        // ============================================================
+        // EMULATOR INITIALIZATION
+        // ============================================================
+        async function initEmulator(romBuffer, savBuffer = null) {
+            if (animationFrameReq) cancelAnimationFrame(animationFrameReq);
+
+            if (audio?.ctx) {
+                try { await audio.ctx.close(); } catch (_) {}
+            }
+            audio = null;
+
+            module = await Binjgb();
+            wramCachedPtr = null;
+
+            // Keep a pristine copy; always apply portrait patches from the original ROM.
+            if (!originalRomBuffer || originalRomBuffer.byteLength !== romBuffer.byteLength) {
+                originalRomBuffer = romBuffer.slice ? romBuffer.slice(0) : new Uint8Array(romBuffer).buffer;
+            }
+            if (!customPlayerPortrait) {
+                customPlayerPortrait = await loadPlayerPortraitFromStorage();
+            }
+            let romBytes = new Uint8Array(originalRomBuffer.slice(0));
+            if (customPlayerPortrait) {
+                if (romBytes.length < ROM_GFX_PLAYER + PORTRAIT_GFX_BYTES) {
+                    console.error('ROM too small for custom portrait offsets (need bank 2E).');
+                } else {
+                    applyPlayerPortraitToRom(romBytes, customPlayerPortrait);
+                }
+            }
+
+            const size = (romBytes.byteLength + 0x7fff) & ~0x7fff;
+            const malloc = getExport('malloc');
+            const romDataPtr = malloc(size);
+            liveRomPtr = romDataPtr;
+            liveRomSize = size;
+
+            makeWasmBuffer(romDataPtr, size).fill(0).set(romBytes);
+
+            // Create the AudioContext BEFORE creating the emulator.
+            // binjgb's reference implementation passes Audio.ctx.sampleRate
+            // into emulator_new_simple(), keeping the generated audio rate
+            // identical to the Web Audio playback rate.
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const eNew = getExport('emulator_new_simple');
+            emulatorPtr = eNew(romDataPtr, size, audioCtx.sampleRate, 4096, 2);
+
+            // Reset wall-clock emulation timing for the new machine.
+            lastEmulationTime = 0;
+            leftoverTicks = 0;
+
+            if (savBuffer && savBuffer.byteLength > 0) {
+                const extRamFileNew = getExport('ext_ram_file_data_new');
+                const getFileDataPtr = getExport('get_file_data_ptr');
+                const getFileDataSize = getExport('get_file_data_size');
+                const readExtRam = getExport('emulator_read_ext_ram');
+                const fileDataDelete = getExport('file_data_delete');
+
+                if (extRamFileNew && readExtRam) {
+                    const fileDataPtr = extRamFileNew(emulatorPtr);
+                    const bufPtr = getFileDataPtr(fileDataPtr);
+                    const bufSize = getFileDataSize(fileDataPtr);
+                    const saveArray = new Uint8Array(savBuffer);
+
+                    if (saveArray.length <= bufSize) {
+                        makeWasmBuffer(bufPtr, bufSize).set(saveArray);
+                        readExtRam(emulatorPtr, fileDataPtr);
+                    }
+                    fileDataDelete(fileDataPtr);
+                }
+            }
+
+            const jNew = getExport('joypad_new');
+            const jSet = getExport('emulator_set_default_joypad_callback');
+            if (jNew && jSet) {
+                joypadPtr = jNew();
+                jSet(emulatorPtr, joypadPtr);
+                refreshJoypadFns();
+                refreshButtonElementCache();
+                setupInput();
+            }
+
+            currentRomBuffer = romBytes.buffer;
+            currentSavBuffer = savBuffer;
+            $('screen-start-overlay')?.classList.add('hidden');
+            $('btn-reset-game')?.classList.remove('hidden');
+
+            audio = new GameAudio(module, emulatorPtr, audioCtx);
+            $('btn-download-sav').disabled = false;
+            $('btn-save-now').disabled = false;
+
+            // Custom portrait data was already patched into the ROM above.
+            // The ROM owns wHasCustomAvatar / wPlayerPortrait after boot/reset.
+            customPortraitSent = false;
+
+            const pLed = $('power-led');
+            if (pLed) {
+                pLed.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981] border border-emerald-400 transition-all';
+            }
+
+            resetAllButtons();
+
+            requestAnimationFrame(() => {
+                fitCanvasIntegerScale();
+                setTimeout(fitCanvasIntegerScale, 50);
+            });
+
+            if (audio) audio.setMuted(false);
+
+            tick();
+        }
+
+        const JOYPAD_EXPORT_NAMES = {
+            up: 'set_joyp_up',
+            down: 'set_joyp_down',
+            left: 'set_joyp_left',
+            right: 'set_joyp_right',
+            A: 'set_joyp_A',
+            B: 'set_joyp_B',
+            start: 'set_joyp_start',
+            select: 'set_joyp_select'
+        };
+
+        const pressedButtons = new Set();
+        const joypadFns = Object.create(null);
+        const buttonElementCache = new Map();
+
+        // Disable JS visual feedback on touch devices to eliminate all input lag
+        const IS_COARSE_POINTER = !!(
+            window.matchMedia &&
+            (window.matchMedia('(hover: none)').matches ||
+             window.matchMedia('(pointer: coarse)').matches)
+        );
+        const USE_JS_VISUAL_FEEDBACK = !IS_COARSE_POINTER;
+
+        const actionPointerIds = new Map();
+        const actionPointerToButton = new Map();
+        const actionTouchIds = new Map();
+        const actionBtnTouchCounts = Object.create(null);
+
+        function refreshButtonElementCache() {
+            buttonElementCache.clear();
+            document.querySelectorAll('[data-gb-btn]').forEach(el => {
+                const btn = el.getAttribute('data-gb-btn');
+                if (!btn) return;
+                if (!buttonElementCache.has(btn)) buttonElementCache.set(btn, []);
+                buttonElementCache.get(btn).push(el);
+            });
+        }
+
+        function getButtonElements(btn) {
+            let els = buttonElementCache.get(btn);
+            if (!els || els.length === 0 || els.some(el => !el.isConnected)) {
+                refreshButtonElementCache();
+                els = buttonElementCache.get(btn) || [];
+            }
+            return els;
+        }
+
+        function refreshJoypadFns() {
+            for (const btn of Object.keys(JOYPAD_EXPORT_NAMES)) {
+                joypadFns[btn] = getExport(JOYPAD_EXPORT_NAMES[btn]);
+            }
+        }
+
+        const desiredButtonStates = Object.create(null);
+        const appliedButtonStates = Object.create(null);
+
+        function setButtonState(btn, isPressed) {
+            const state = !!isPressed;
+            if (desiredButtonStates[btn] === state) return;
+
+            if (state) pressedButtons.add(btn);
+            else pressedButtons.delete(btn);
+            desiredButtonStates[btn] = state;
+
+            // Desktop only: visual feedback. Mobile keeps zero DOM operations on button presses.
+            if (USE_JS_VISUAL_FEEDBACK) {
+                const els = getButtonElements(btn);
+                els.forEach(el => el.classList.toggle('pressed', state));
+            }
+        }
+
+        function flushJoypadStates() {
+            if (!emulatorPtr || !module) return;
+
+            for (const btn of Object.keys(JOYPAD_EXPORT_NAMES)) {
+                const desired = !!desiredButtonStates[btn];
+                const applied = !!appliedButtonStates[btn];
+                if (desired === applied) continue;
+
+                let fn = joypadFns[btn];
+                if (!fn) {
+                    fn = getExport(JOYPAD_EXPORT_NAMES[btn]);
+                    joypadFns[btn] = fn;
+                }
+                if (fn) {
+                    try {
+                        fn(emulatorPtr, desired ? 1 : 0);
+                        appliedButtonStates[btn] = desired;
+                    } catch (_) {}
+                }
+            }
+        }
+
+        function resetAllButtons() {
+            const all = ['up', 'down', 'left', 'right', 'A', 'B', 'start', 'select'];
+
+            pressedButtons.clear();
+            actionPointerIds.clear();
+            actionPointerToButton.clear();
+            actionTouchIds.clear();
+            for (const k of Object.keys(actionBtnTouchCounts)) {
+                actionBtnTouchCounts[k] = 0;
+            }
+
+            for (const btn of all) {
+                desiredButtonStates[btn] = false;
+                appliedButtonStates[btn] = false;
+
+                if (USE_JS_VISUAL_FEEDBACK) {
+                    getButtonElements(btn).forEach(el => el.classList.remove('pressed'));
+                }
+            }
+
+            flushJoypadStates();
+        }
+
+        let inputSetupDone = false;
+
+        function setupInput() {
+            if (inputSetupDone) return;
+            inputSetupDone = true;
+
+            const dpadCross = $('dpad-cross');
+            let dpadTouchId = null;
+            let currentDpadDirs = new Set();
+
+            const calculateDpadDirections = (clientX, clientY) => {
+                if (!dpadCross) return new Set();
+                const rect = dpadCross.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const dx = clientX - cx;
+                const dy = clientY - cy;
+                const dist = Math.hypot(dx, dy);
+
+                const dirs = new Set();
+                if (dist > 10) {
+                    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                    if (angle < -22.5 && angle > -157.5) dirs.add('up');
+                    if (angle > 22.5 && angle < 157.5) dirs.add('down');
+                    if (angle > -67.5 && angle < 67.5) dirs.add('right');
+                    if (angle > 112.5 || angle < -112.5) dirs.add('left');
+                }
+                return dirs;
+            };
+
+            const applyDpadDirections = (newDirs) => {
+                currentDpadDirs.forEach(d => {
+                    if (!newDirs.has(d)) setButtonState(d, false);
+                });
+                newDirs.forEach(d => {
+                    if (!currentDpadDirs.has(d)) setButtonState(d, true);
+                });
+                currentDpadDirs = newDirs;
+            };
+
+            if (dpadCross) {
+                dpadCross.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (audio?.ctx?.state === 'suspended') audio.ctx.resume();
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        if (dpadTouchId === null) {
+                            dpadTouchId = touch.identifier;
+                            applyDpadDirections(calculateDpadDirections(touch.clientX, touch.clientY));
+                            break;
+                        }
+                    }
+                }, { passive: false });
+
+                window.addEventListener('touchmove', (e) => {
+                    if (dpadTouchId !== null) {
+                        for (let i = 0; i < e.changedTouches.length; i++) {
+                            const touch = e.changedTouches[i];
+                            if (touch.identifier === dpadTouchId) {
+                                e.preventDefault();
+                                applyDpadDirections(calculateDpadDirections(touch.clientX, touch.clientY));
+                                break;
+                            }
+                        }
+                    }
+                }, { passive: false });
+
+                const endDpadTouch = (e) => {
+                    if (dpadTouchId !== null) {
+                        for (let i = 0; i < e.changedTouches.length; i++) {
+                            if (e.changedTouches[i].identifier === dpadTouchId) {
+                                dpadTouchId = null;
+                                applyDpadDirections(new Set());
+                                break;
+                            }
+                        }
+                    }
+                };
+
+                window.addEventListener('touchend', endDpadTouch, { passive: false });
+                window.addEventListener('touchcancel', endDpadTouch, { passive: false });
+
+                let pointerActive = false;
+                dpadCross.addEventListener('pointerdown', (e) => {
+                    if (e.pointerType === 'touch') return;
+                    e.preventDefault();
+                    pointerActive = true;
+                    dpadCross.setPointerCapture(e.pointerId);
+                    applyDpadDirections(calculateDpadDirections(e.clientX, e.clientY));
+                    if (audio?.ctx?.state === 'suspended') audio.ctx.resume();
+                });
+
+                dpadCross.addEventListener('pointermove', (e) => {
+                    if (pointerActive && e.pointerType !== 'touch') {
+                        e.preventDefault();
+                        applyDpadDirections(calculateDpadDirections(e.clientX, e.clientY));
+                    }
+                });
+
+                const clearPointerDpad = () => {
+                    if (pointerActive) {
+                        pointerActive = false;
+                        applyDpadDirections(new Set());
+                    }
+                };
+
+                dpadCross.addEventListener('pointerup', clearPointerDpad);
+                dpadCross.addEventListener('pointercancel', clearPointerDpad);
+            }
+
+            const isActionButton = (target) => {
+                const el = target instanceof Element
+                    ? target.closest('[data-gb-btn]:not(.dpad-btn)')
+                    : null;
+                return el || null;
+            };
+
+            if (IS_COARSE_POINTER) {
+                // Mobile: Touch events with identifier tracking (no DOM modification, no layout trashing)
+                document.addEventListener('touchstart', (e) => {
+                    let handled = false;
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const t = e.changedTouches[i];
+                        const el = isActionButton(t.target);
+                        if (!el) continue;
+                        const btn = el.getAttribute('data-gb-btn');
+                        if (!btn) continue;
+                        handled = true;
+                        actionTouchIds.set(t.identifier, btn);
+                        actionBtnTouchCounts[btn] = (actionBtnTouchCounts[btn] || 0) + 1;
+                        if (actionBtnTouchCounts[btn] === 1) setButtonState(btn, true);
+                    }
+                    if (handled) {
+                        e.preventDefault();
+                        if (audio?.ctx?.state === 'suspended') audio.ctx.resume();
+                    }
+                }, { passive: false });
+
+                const endActionTouch = (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const t = e.changedTouches[i];
+                        const btn = actionTouchIds.get(t.identifier);
+                        if (!btn) continue;
+                        actionTouchIds.delete(t.identifier);
+                        const count = (actionBtnTouchCounts[btn] || 1) - 1;
+                        actionBtnTouchCounts[btn] = count;
+                        if (count <= 0) {
+                            actionBtnTouchCounts[btn] = 0;
+                            setButtonState(btn, false);
+                        }
+                    }
+                };
+                document.addEventListener('touchend', endActionTouch, { passive: true });
+                document.addEventListener('touchcancel', endActionTouch, { passive: true });
+            } else {
+                // Desktop: Pointer events with visual pressed state
+                document.addEventListener('pointerdown', (e) => {
+                    if (e.pointerType === 'touch') return;
+                    const el = isActionButton(e.target);
+                    if (!el) return;
+                    e.preventDefault();
+                    const btn = el.getAttribute('data-gb-btn');
+                    if (!btn) return;
+                    if (!actionPointerIds.has(btn)) actionPointerIds.set(btn, new Set());
+                    actionPointerIds.get(btn).add(e.pointerId);
+                    actionPointerToButton.set(e.pointerId, btn);
+                    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+                    setButtonState(btn, true);
+                }, { passive: false });
+
+                const releaseActionPointer = (e) => {
+                    const btn = actionPointerToButton.get(e.pointerId);
+                    if (!btn) return;
+                    actionPointerToButton.delete(e.pointerId);
+                    const ids = actionPointerIds.get(btn);
+                    if (ids) {
+                        ids.delete(e.pointerId);
+                        if (ids.size === 0) {
+                            actionPointerIds.delete(btn);
+                            setButtonState(btn, false);
+                        }
+                    }
+                };
+                document.addEventListener('pointerup', releaseActionPointer, { passive: true });
+                document.addEventListener('pointercancel', releaseActionPointer, { passive: true });
+            }
+
+            // ============================================================
+            // CUSTOM KEY MAPPING & KEYBOARD CONTROLS (DESKTOP & EXTERNAL)
+            // ============================================================
+            const DEFAULT_KEY_BINDINGS = {
+                up: ['ArrowUp', 'KeyW'],
+                down: ['ArrowDown', 'KeyS'],
+                left: ['ArrowLeft', 'KeyA'],
+                right: ['ArrowRight', 'KeyD'],
+                A: ['KeyX', 'KeyJ'],
+                B: ['KeyZ', 'KeyK'],
+                start: ['Enter'],
+                select: ['Space', 'Tab']
+            };
+
+            const ACTION_METADATA = {
+                up: { label: 'D-Pad Up', symbol: '▲', color: 'text-sky-400' },
+                down: { label: 'D-Pad Down', symbol: '▼', color: 'text-sky-400' },
+                left: { label: 'D-Pad Left', symbol: '◀', color: 'text-sky-400' },
+                right: { label: 'D-Pad Right', symbol: '▶', color: 'text-sky-400' },
+                A: { label: 'Button A', symbol: 'A', color: 'text-rose-400' },
+                B: { label: 'Button B', symbol: 'B', color: 'text-rose-400' },
+                start: { label: 'Start', symbol: 'START', color: 'text-slate-300' },
+                select: { label: 'Select', symbol: 'SELECT', color: 'text-slate-300' }
+            };
+
+            const KEY_STORAGE_KEY = 'tcg_custom_key_bindings_v1';
+            let customBindings = loadKeyBindings();
+            let keyMap = buildKeyMap(customBindings);
+            let rebindingTarget = null;
+
+            function loadKeyBindings() {
+                try {
+                    const stored = localStorage.getItem(KEY_STORAGE_KEY);
+                    if (stored) {
+                        const parsed = JSON.parse(stored);
+                        if (parsed && typeof parsed === 'object') {
+                            const merged = {};
+                            for (const action of Object.keys(DEFAULT_KEY_BINDINGS)) {
+                                if (Array.isArray(parsed[action]) && parsed[action].length > 0) {
+                                    merged[action] = [...parsed[action]];
+                                } else {
+                                    merged[action] = [...DEFAULT_KEY_BINDINGS[action]];
+                                }
+                            }
+                            return merged;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Failed to load key bindings:', e);
+                }
+                return JSON.parse(JSON.stringify(DEFAULT_KEY_BINDINGS));
+            }
+
+            function saveKeyBindings(bindings) {
+                try {
+                    localStorage.setItem(KEY_STORAGE_KEY, JSON.stringify(bindings));
+                } catch (e) {
+                    console.warn('Failed to save key bindings:', e);
+                }
+                keyMap = buildKeyMap(bindings);
+                updateCheatsheetUI();
+                renderModalBindings();
+            }
+
+            function resetKeyBindings() {
+                customBindings = JSON.parse(JSON.stringify(DEFAULT_KEY_BINDINGS));
+                saveKeyBindings(customBindings);
+            }
+
+            function buildKeyMap(bindings) {
+                const map = {};
+                for (const [action, keys] of Object.entries(bindings)) {
+                    for (const key of keys) {
+                        if (key) map[key] = action;
+                    }
+                }
+                return map;
+            }
+
+            function formatKey(code) {
+                if (!code) return 'None';
+                const special = {
+                    ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+                    Space: 'Space', Enter: 'Enter', Tab: 'Tab', Backspace: 'Backspace',
+                    Escape: 'Esc', ShiftLeft: 'L-Shift', ShiftRight: 'R-Shift',
+                    ControlLeft: 'L-Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'L-Alt', AltRight: 'R-Alt',
+                    Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/',
+                    Backslash: '\\', BracketLeft: '[', BracketRight: ']', Minus: '-', Equal: '='
+                };
+                if (special[code]) return special[code];
+                if (code.startsWith('Key')) return code.slice(3).toUpperCase();
+                if (code.startsWith('Digit')) return code.slice(5);
+                if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+                return code;
+            }
+
+            function updateCheatsheetUI() {
+                const container = $('keyboard-cheatsheet-rows');
+                if (!container) return;
+
+                const rows = [
+                    {
+                        name: 'D-Pad',
+                        keys: [
+                            ...new Set([
+                                ...customBindings.up.map(k => formatKey(k)),
+                                ...customBindings.down.map(k => formatKey(k)),
+                                ...customBindings.left.map(k => formatKey(k)),
+                                ...customBindings.right.map(k => formatKey(k))
+                            ])
+                        ].slice(0, 6)
+                    },
+                    { name: 'Button A', keys: customBindings.A.map(k => formatKey(k)), color: 'text-rose-300 font-bold' },
+                    { name: 'Button B', keys: customBindings.B.map(k => formatKey(k)), color: 'text-rose-300 font-bold' },
+                    { name: 'Start', keys: customBindings.start.map(k => formatKey(k)) },
+                    { name: 'Select', keys: customBindings.select.map(k => formatKey(k)) }
+                ];
+
+                container.innerHTML = rows
+                    .map((row, i) => {
+                        const isLast = i === rows.length - 1;
+                        const kbds = row.keys
+                            .map(k => `<kbd class="px-1 bg-slate-800 border border-slate-700 rounded ${row.color || 'text-slate-200'}">${k}</kbd>`)
+                            .join(' / ');
+                        return `
+                        <div class="flex justify-between items-center py-1 ${isLast ? '' : 'border-b border-slate-800/60'}">
+                            <span class="text-slate-400">${row.name}</span>
+                            <span class="truncate ml-2 text-right">${kbds || '<span class="text-slate-600">Unbound</span>'}</span>
+                        </div>`;
+                    })
+                    .join('');
+            }
+
+            function renderModalBindings() {
+                const list = $('keymap-list');
+                if (!list) return;
+
+                list.innerHTML = Object.keys(ACTION_METADATA)
+                    .map(action => {
+                        const meta = ACTION_METADATA[action];
+                        const keys = customBindings[action] || [];
+                        const slot0Key = keys[0] ? formatKey(keys[0]) : 'None';
+                        const slot1Key = keys[1] ? formatKey(keys[1]) : '+ Add';
+
+                        const isSlot0Rebinding = rebindingTarget?.action === action && rebindingTarget?.slot === 0;
+                        const isSlot1Rebinding = rebindingTarget?.action === action && rebindingTarget?.slot === 1;
+
+                        return `
+                        <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 hover:border-slate-700 transition" data-action="${action}">
+                            <div class="flex items-center gap-2.5 min-w-[120px]">
+                                <span class="w-6 h-6 flex items-center justify-center rounded-lg bg-slate-900 border border-slate-700/80 font-mono text-xs ${meta.color}">
+                                    ${meta.symbol}
+                                </span>
+                                <span class="text-xs font-semibold text-slate-200 font-mono">${meta.label}</span>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    class="key-slot-btn px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold border transition cursor-pointer min-w-[70px] text-center ${
+                                        isSlot0Rebinding
+                                            ? 'bg-amber-950/80 text-amber-300 border-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse'
+                                            : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                                    }"
+                                    data-bind-action="${action}"
+                                    data-bind-slot="0"
+                                >
+                                    ${isSlot0Rebinding ? '...' : slot0Key}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    class="key-slot-btn px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold border transition cursor-pointer min-w-[70px] text-center ${
+                                        isSlot1Rebinding
+                                            ? 'bg-amber-950/80 text-amber-300 border-amber-500 shadow-[0_0_10px_#f59e0b] animate-pulse'
+                                            : keys[1]
+                                            ? 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+                                            : 'bg-slate-950 text-slate-500 border-dashed border-slate-800 hover:border-slate-600 hover:text-slate-300'
+                                    }"
+                                    data-bind-action="${action}"
+                                    data-bind-slot="1"
+                                >
+                                    ${isSlot1Rebinding ? '...' : slot1Key}
+                                </button>
+
+                                <span id="test-pill-${action}" class="w-2.5 h-2.5 rounded-full bg-slate-800 transition-colors"></span>
+                            </div>
+                        </div>
+                        `;
+                    })
+                    .join('');
+
+                list.querySelectorAll('.key-slot-btn').forEach(btn => {
+                    btn.onclick = () => {
+                        const action = btn.getAttribute('data-bind-action');
+                        const slot = parseInt(btn.getAttribute('data-bind-slot'), 10);
+                        startRebinding(action, slot);
+                    };
+                });
+            }
+
+            function startRebinding(action, slot) {
+                rebindingTarget = { action, slot };
+                renderModalBindings();
+                const statusEl = $('keymap-rebinding-banner');
+                if (statusEl) {
+                    const meta = ACTION_METADATA[action];
+                    statusEl.innerHTML = `<span class="text-amber-400 animate-pulse font-bold">Press any key for [${meta.label}]</span> <span class="text-slate-400 text-[10px] block mt-0.5">(Press Esc to cancel, Backspace to clear)</span>`;
+                    statusEl.classList.remove('hidden');
+                }
+            }
+
+            function cancelRebinding() {
+                rebindingTarget = null;
+                const statusEl = $('keymap-rebinding-banner');
+                if (statusEl) statusEl.classList.add('hidden');
+                renderModalBindings();
+            }
+
+            function flashKeyIndicator(action) {
+                const pill = document.getElementById(`test-pill-${action}`);
+                if (pill) {
+                    pill.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] transition-colors';
+                    setTimeout(() => {
+                        if (pill) pill.className = 'w-2.5 h-2.5 rounded-full bg-slate-800 transition-colors';
+                    }, 150);
+                }
+            }
+
+            function setupKeyMappingModal() {
+                const openBtn = $('btn-open-keymap');
+                const modal = $('keymap-modal');
+                const closeBtn = $('btn-close-keymap');
+                const resetBtn = $('btn-reset-keymap');
+                const doneBtn = $('btn-done-keymap');
+
+                const showModal = () => {
+                    renderModalBindings();
+                    if (modal) modal.classList.remove('hidden');
+                };
+
+                const hideModal = () => {
+                    cancelRebinding();
+                    if (modal) modal.classList.add('hidden');
+                };
+
+                if (openBtn) openBtn.onclick = showModal;
+                if (closeBtn) closeBtn.onclick = hideModal;
+                if (doneBtn) doneBtn.onclick = hideModal;
+
+                if (resetBtn) {
+                    resetBtn.onclick = () => {
+                        if (confirm('Reset all keyboard controls to default layout (WASD/Arrows, X/J, Z/K, Enter, Space/Tab)?')) {
+                            resetKeyBindings();
+                        }
+                    };
+                }
+
+                updateCheatsheetUI();
+            }
+
+            setupKeyMappingModal();
+
+            window.addEventListener('keydown', (e) => {
+                // Interactive rebinding capture
+                if (rebindingTarget) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const { action, slot } = rebindingTarget;
+
+                    if (e.code === 'Escape') {
+                        cancelRebinding();
+                        return;
+                    }
+
+                    if (e.code === 'Backspace' || e.code === 'Delete') {
+                        if (slot === 1) {
+                            customBindings[action] = [customBindings[action][0]];
+                        } else if (customBindings[action].length > 1) {
+                            customBindings[action].splice(slot, 1);
+                        }
+                        rebindingTarget = null;
+                        saveKeyBindings(customBindings);
+                        cancelRebinding();
+                        return;
+                    }
+
+                    const newCode = e.code;
+                    // Unbind key if previously assigned to another action
+                    for (const act of Object.keys(customBindings)) {
+                        customBindings[act] = customBindings[act].filter(k => k !== newCode);
+                    }
+
+                    const keys = customBindings[action] || [];
+                    if (slot === 0) keys[0] = newCode;
+                    else keys[1] = newCode;
+                    customBindings[action] = keys.filter(Boolean);
+
+                    rebindingTarget = null;
+                    saveKeyBindings(customBindings);
+                    cancelRebinding();
+                    return;
+                }
+
+                if (e.code === 'F9') { e.preventDefault(); return; }
+                if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                const btn = keyMap[e.code];
+                if (btn) {
+                    e.preventDefault();
+                    setButtonState(btn, true);
+                    flashKeyIndicator(btn);
+                    if (audio?.ctx?.state === 'suspended') audio.ctx.resume();
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (rebindingTarget) return;
+                if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+                const btn = keyMap[e.code];
+                if (btn) {
+                    e.preventDefault();
+                    setButtonState(btn, false);
+                }
+            });
+
+            window.addEventListener('blur', resetAllButtons);
+            window.addEventListener('focus', resetAllButtons);
+
+            // Mobile Navigation Tabs
+            document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const tab = btn.getAttribute('data-tab');
+                    document.querySelectorAll('.mobile-tab-btn').forEach(b => {
+                        b.classList.remove('bg-blue-600', 'text-white');
+                        b.classList.add('text-slate-400');
+                    });
+                    btn.classList.add('bg-blue-600', 'text-white');
+                    btn.classList.remove('text-slate-400');
+
+                    const filesCol = $('panel-files-col');
+                    const chatCol = $('panel-chat-col');
+                    const chassis = $('gb-chassis');
+
+                    if (window.innerWidth < 1024) {
+                        if (tab === 'game') {
+                            if (filesCol) filesCol.style.display = 'none';
+                            if (chatCol) chatCol.style.display = 'none';
+                            chassis?.scrollIntoView({ behavior: 'smooth' });
+                        } else if (tab === 'files') {
+                            if (filesCol) filesCol.style.display = 'flex';
+                            if (chatCol) chatCol.style.display = 'none';
+                            filesCol?.scrollIntoView({ behavior: 'smooth' });
+                        } else if (tab === 'chat') {
+                            if (filesCol) filesCol.style.display = 'none';
+                            if (chatCol) chatCol.style.display = 'flex';
+                            chatCol?.scrollIntoView({ behavior: 'smooth' });
+                        }
+                    }
+                };
+            });
+
+            window.addEventListener('resize', () => {
+                const filesCol = $('panel-files-col');
+                const chatCol = $('panel-chat-col');
+                if (window.innerWidth >= 1024) {
+                    if (filesCol) filesCol.style.display = '';
+                    if (chatCol) chatCol.style.display = '';
+                } else {
+                    const activeTab = document.querySelector('.mobile-tab-btn.bg-blue-600')?.getAttribute('data-tab') || 'game';
+                    if (activeTab === 'game') {
+                        if (filesCol) filesCol.style.display = 'none';
+                        if (chatCol) chatCol.style.display = 'none';
+                    } else if (activeTab === 'files') {
+                        if (filesCol) filesCol.style.display = 'flex';
+                        if (chatCol) chatCol.style.display = 'none';
+                    } else if (activeTab === 'chat') {
+                        if (filesCol) filesCol.style.display = 'none';
+                        if (chatCol) chatCol.style.display = 'flex';
+                    }
+                }
+            });
+
+            if (window.innerWidth < 1024) {
+                const filesCol = $('panel-files-col');
+                const chatCol = $('panel-chat-col');
+                if (filesCol) filesCol.style.display = 'none';
+                if (chatCol) chatCol.style.display = 'none';
+            }
+
+            const btnCopy = $('btn-copy-code');
+            if (btnCopy) {
+                btnCopy.onclick = async () => {
+                    const code = $('room-code')?.innerText.trim();
+                    if (code && code !== '------') {
+                        try {
+                            await navigator.clipboard.writeText(code);
+                            const orig = $('room-code').innerText;
+                            $('room-code').innerText = 'COPIED!';
+                            setTimeout(() => { $('room-code').innerText = orig; }, 1500);
+                        } catch (_) {}
+                    }
+                };
+            }
+
+            // Audio Mute / Resume button
+            const btnAudio = $('btn-audio-toggle');
+            if (btnAudio) {
+                btnAudio.onclick = () => {
+                    if (!audio?.ctx) return;
+                    if (audio.ctx.state === 'suspended') {
+                        audio.ctx.resume().then(() => {
+                            audio.setMuted(false);
+                        }).catch(() => {});
+                        return;
+                    }
+                    audio.toggleMute();
+                };
+            }
+
+            fitCanvasIntegerScale();
+            window.addEventListener('resize', fitCanvasIntegerScale);
+        }
+
+        // ============================================================
+        // MAIN EMULATION LOOP & BACKGROUND WATCHDOG
+        // ============================================================
+        // IMPORTANT: requestAnimationFrame is tied to the display refresh rate.
+        // A desktop monitor can run at 120/144/165Hz, while the Game Boy must
+        // always run at its real ~59.7Hz cadence.  Advancing exactly one GB
+        // frame per rAF makes the emulator run too fast on high-refresh displays
+        // and causes the audio queue to accumulate delay over time.
+        // Use elapsed wall-clock time instead, like binjgb's reference loop.
+        const CPU_TICKS_PER_SECOND = 4194304;
+        const MAX_UPDATE_SEC = 5 / 60;
+        let lastTickTime = performance.now();
+        let lastEmulationTime = 0;
+        let leftoverTicks = 0;
+        let lastPlayTimeTick = 0;
+
+        function updatePlayTimeClock() {
+            const wram = getWram();
+            if (!wram) return;
+
+            wram[OFFSET_PLAY_TIME_ENABLE] = 1;
+
+            const now = performance.now();
+            if (lastPlayTimeTick === 0) {
+                lastPlayTimeTick = now;
+                return;
+            }
+
+            const elapsedMs = now - lastPlayTimeTick;
+            if (elapsedMs < 1000) return;
+
+            const elapsedSeconds = Math.floor(elapsedMs / 1000);
+            lastPlayTimeTick += elapsedSeconds * 1000;
+
+            let sec = wram[OFFSET_PLAY_TIME_COUNTER + 1] + elapsedSeconds;
+            let min = wram[OFFSET_PLAY_TIME_COUNTER + 2] + Math.floor(sec / 60);
+            sec = sec % 60;
+
+            let hr = (wram[OFFSET_PLAY_TIME_COUNTER + 3] | (wram[OFFSET_PLAY_TIME_COUNTER + 4] << 8)) + Math.floor(min / 60);
+            min = min % 60;
+            if (hr > 65535) hr = 65535;
+
+            wram[OFFSET_PLAY_TIME_COUNTER + 1] = sec;
+            wram[OFFSET_PLAY_TIME_COUNTER + 2] = min;
+            wram[OFFSET_PLAY_TIME_COUNTER + 3] = hr & 0xFF;
+            wram[OFFSET_PLAY_TIME_COUNTER + 4] = (hr >> 8) & 0xFF;
+        }
+
+        function stepEmulator() {
+            if (!module || !emulatorPtr) return;
+
+            const nowSec = performance.now() / 1000;
+            let deltaSec;
+
+            if (!lastEmulationTime) {
+                // Start at the real Game Boy cadence rather than depending on
+                // whether the first rAF happened early or late.
+                deltaSec = 1 / 60;
+            } else {
+                deltaSec = Math.max(nowSec - lastEmulationTime, 0);
+            }
+            lastEmulationTime = nowSec;
+
+            // Prevent a hidden/background tab or a brief stall from trying to
+            // emulate seconds of Game Boy time in one call.
+            deltaSec = Math.min(deltaSec, MAX_UPDATE_SEC);
+
+            flushJoypadStates();
+
+            const runUntil = getExport('emulator_run_until_f64');
+            const getTicks = getExport('emulator_get_ticks_f64');
+            if (!runUntil || !getTicks) return;
+
+            const deltaTicks = deltaSec * CPU_TICKS_PER_SECOND;
+            const runUntilTicks = getTicks(emulatorPtr) + deltaTicks - leftoverTicks;
+
+            // emulator_run_until_f64 returns at frame/audio boundaries, so this
+            // loop may run more than once on a slower frame. Keep the RAM/link
+            // processing at those boundaries while still advancing at real time.
+            while (getTicks(emulatorPtr) < runUntilTicks) {
+                const res = runUntil(emulatorPtr, runUntilTicks);
+
+                if ((res & 2) && audio) audio.push();
+
+                if (res & 1) {
+                    // New Game Boy frame reached. Process link/RAM state here so
+                    // catch-up frames on a high-refresh/slow render loop do not
+                    // skip intermediate synchronization points.
+                    updatePlayTimeClock();
+                    syncRamLogic();
+                    handleSerialSendQueue();
+                    processIncomingSerialQueue();
+                    handleSerialPacketState();
+                }
+
+                if (res & 4) break;
+            }
+
+            // Preserve the fractional-tick remainder, matching the reference
+            // implementation's leftoverTicks behavior and preventing long-term
+            // timing drift.
+            leftoverTicks = (getTicks(emulatorPtr) - runUntilTicks) | 0;
+
+            // These also need to run when less than a full GB frame elapsed.
+            updatePlayTimeClock();
+            syncRamLogic();
+            handleSerialSendQueue();
+            processIncomingSerialQueue();
+            handleSerialPacketState();
+        }
+
+        function tick() {
+            stepEmulator();
+
+            const getFb = getExport('get_frame_buffer_ptr');
+            if (getFb) {
+                const fbPtr = getFb(emulatorPtr);
+                const frameData = new Uint8ClampedArray(module.HEAPU8.buffer, fbPtr, 160 * 144 * 4);
+                blitFrame(frameData);
+            }
+
+            lastTickTime = performance.now();
+            animationFrameReq = requestAnimationFrame(tick);
+        }
+
+        // Background watchdog: only step if page is backgrounded or hidden
+        setInterval(() => {
+            if (document.hidden && emulatorPtr && performance.now() - lastTickTime > 100) {
+                stepEmulator();
+                lastTickTime = performance.now();
+            }
+        }, 100);
+
+        // ============================================================
+        // MULTI-STAGE LOCKSTEP & RAM LOGIC
+        // ============================================================
+        let lastP1Visual = null;
+        let lastP2Visual = null;
+
+        function syncRamLogic() {
+            const wram = getWram();
+            if (!wram) return;
+
+            const p1 = wram[OFFSET_P1_READY];
+            const p2 = wram[OFFSET_P2_READY];
+
+            // Only update DOM styles when the status actually changes (zero per-frame style recalculations)
+            if (p1 !== lastP1Visual) {
+                lastP1Visual = p1;
+                const p1Flag = $('p1-flag');
+                if (p1Flag) p1Flag.className = `w-3 h-3 rounded-full ${p1 > 0 ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-slate-700'}`;
+            }
+            if (p2 !== lastP2Visual) {
+                lastP2Visual = p2;
+                const p2Flag = $('p2-flag');
+                if (p2Flag) p2Flag.className = `w-3 h-3 rounded-full ${p2 > 0 ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-slate-700'}`;
+            }
+
+            if (p1 !== lastP1State) {
+                lastP1State = p1;
+
+                if (connection?.open) {
+                    const avatar = wram[OFFSET_PLAYER_AVATAR];
+                    const rawName = readRawPlayerName();
+
+                    connection.send({
+                        type: 'ready_sync',
+                        step: p1,
+                        avatar: avatar,
+                        name: rawName,
+                    });
+                    if (p1 >= 1) sendCustomPortraitIfNeeded();
+                }
+            }
+
+            if (p1 >= 1 && p2 >= 1 && !deckSynced && connection?.open) {
+                deckSynced = true;
+
+                const myDeck = Array.from(wram.subarray(OFFSET_PLAYER_DECK, OFFSET_PLAYER_DECK + DECK_SIZE));
+                const myRawName = readRawPlayerName();
+                const myAvatar = wram[OFFSET_PLAYER_AVATAR];
+
+                const coinFlip = isHost ? (Math.random() < 0.5 ? 0 : 1) : null;
+
+                if (isHost) {
+                    wram[OFFSET_SERIAL_OP] = (coinFlip === 0 ? 0x29 : 0x00);
+                }
+
+                sendCustomPortraitIfNeeded();
+                connection.send({
+                    type: 'deck_exchange',
+                    deck: myDeck,
+                    rawName: myRawName,
+                    avatar: myAvatar,
+                    firstPlayer: coinFlip,
+                });
+            }
+
+            if (p1 >= 2 && !boardSetupSynced && connection?.open) {
+                boardSetupSynced = true;
+                const myDuelvars = Array.from(wram.subarray(OFFSET_PLAYER_DUELVARS, OFFSET_PLAYER_DUELVARS + 0x0100));
+
+                connection.send({
+                    type: 'board_setup_sync',
+                    duelvars: myDuelvars
+                });
+            }
+
+            if (p1 === 0 && p2 === 0) {
+                deckSynced = false;
+                boardSetupSynced = false;
+            }
+        }
+
+        // ============================================================
+        // SERIAL SEND QUEUE (OUTGOING)
+        // ============================================================
+        function handleSerialSendQueue() {
+            const wram = getWram();
+            if (!wram || !connection?.open) return;
+
+            const bytesToSend = wram[OFFSET_SERIAL_SEND_TOGGLE];
+            if (bytesToSend > 0) {
+                const packet = Array.from(wram.subarray(OFFSET_SERIAL_SEND_BUF, OFFSET_SERIAL_SEND_BUF + bytesToSend));
+                wram[OFFSET_SERIAL_SEND_TOGGLE] = 0;
+
+                connection.send({
+                    type: 'serial_packet',
+                    payload: packet
+                });
+            }
+        }
+
+        // ============================================================
+        // SERIAL FIFO QUEUE PUMP (INCOMING)
+        // ============================================================
+        function processIncomingSerialQueue() {
+            const wram = getWram();
+            if (!wram) return;
+
+            if (incomingSerialQueue.length === 0) return;
+
+            const recvCount = wram[OFFSET_SERIAL_RECV_COUNT];
+            const recvState = wram[OFFSET_SERIAL_RECV_STATE];
+
+            if (recvCount === 0 && recvState === PACKET_IDLE) {
+                const nextPacket = incomingSerialQueue.shift();
+                const bytes = new Uint8Array(nextPacket);
+
+                wram.set(bytes, OFFSET_SERIAL_RECV_BUF);
+                wram[OFFSET_SERIAL_RECV_COUNT] = bytes.length;
+            }
+        }
+
+        // ============================================================
+        // RECEIVE-SIDE SERIAL STATE (ACKNOWLEDGE CONSUMED)
+        // ============================================================
+        function handleSerialPacketState() {
+            const wram = getWram();
+            if (!wram || !connection?.open) return;
+
+            const state = wram[OFFSET_SERIAL_RECV_STATE];
+            if (state === PACKET_CONSUMED) {
+                connection.send({ type: 'packet_received_by_opp' });
+                wram[OFFSET_SERIAL_RECV_STATE] = PACKET_IDLE;
+            }
+        }
+
+        // ============================================================
+        // BROWSER SAVE STORAGE (IndexedDB)
+        // ============================================================
+        const DB_NAME = 'PokemonTCG_DB';
+        const DB_STORE = 'saves';
+        const SRAM_KEY = 'tcg_sram';
+
+        function openSaveDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(DB_STORE)) {
+                        db.createObjectStore(DB_STORE);
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function loadSramFromStorage() {
+            try {
+                const db = await openSaveDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(DB_STORE, 'readonly');
+                    const store = tx.objectStore(DB_STORE);
+                    const req = store.get(SRAM_KEY);
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch (err) {
+                console.warn("Save storage load error:", err);
+                return null;
+            }
+        }
+
+        async function saveSramToStorage(data) {
+            if (!data || data.length === 0) return;
+            try {
+                const db = await openSaveDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(DB_STORE, 'readwrite');
+                    const store = tx.objectStore(DB_STORE);
+                    store.put(data, SRAM_KEY);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (err) {
+                console.warn("Save storage write error:", err);
+            }
+        }
+
+        async function clearSramFromStorage() {
+            try {
+                const db = await openSaveDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction(DB_STORE, 'readwrite');
+                    const store = tx.objectStore(DB_STORE);
+                    store.delete(SRAM_KEY);
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                });
+            } catch (err) {
+                console.warn("Save storage clear error:", err);
+            }
+        }
+
+        function getEmulatorSramData() {
+            if (!emulatorPtr || !module) return null;
+            const extRamFileNew = getExport('ext_ram_file_data_new');
+            const writeExtRam = getExport('emulator_write_ext_ram');
+            const getFileDataPtr = getExport('get_file_data_ptr');
+            const getFileDataSize = getExport('get_file_data_size');
+            const fileDataDelete = getExport('file_data_delete');
+
+            if (!extRamFileNew || !writeExtRam) return null;
+            const fileDataPtr = extRamFileNew(emulatorPtr);
+            writeExtRam(emulatorPtr, fileDataPtr);
+
+            const ptr = getFileDataPtr(fileDataPtr);
+            const size = getFileDataSize(fileDataPtr);
+            let copy = null;
+            if (size > 0) {
+                copy = new Uint8Array(module.HEAP8.buffer, ptr, size).slice();
+            }
+            fileDataDelete(fileDataPtr);
+            return copy;
+        }
+
+        setInterval(async () => {
+            if (emulatorPtr) {
+                const sram = getEmulatorSramData();
+                if (sram && sram.length > 0) {
+                    await saveSramToStorage(sram);
+                }
+            }
+        }, 5000);
+
+        window.addEventListener('beforeunload', () => {
+            if (emulatorPtr) {
+                const sram = getEmulatorSramData();
+                if (sram && sram.length > 0) {
+                    saveSramToStorage(sram);
+                }
+            }
+            // Tell partner we are leaving so their Status leaves "LINKED" immediately
+            sendByeAndClose();
+        });
+
+        // pagehide is more reliable than beforeunload on mobile / bfcache
+        window.addEventListener('pagehide', () => {
+            sendByeAndClose();
+        });
+
+        // ============================================================
+        // ROM AUTO-FETCHING & STATUS INIT
+        // ============================================================
+        let autoFetchedRom = null;
+
+        async function autoDetectRom() {
+            const romPaths = [
+                './poketcg-duel-client.gbc',
+                '../poketcg-duel-client.gbc',
+                '/poketcg-duel-client.gbc',
+                './poketcg.gbc',
+                '../poketcg.gbc',
+                '/poketcg.gbc',
+                './pokemon_tcg.gbc',
+                './game.gbc',
+                './rom.gbc',
+                'https://raw.githubusercontent.com/Backpacker-Slash/clientv2/main/poketcg-duel-client.gbc'
+            ];
+
+            for (const path of romPaths) {
+                try {
+                    const res = await fetch(path, { method: 'GET' });
+                    if (res.ok) {
+                        const buf = await res.arrayBuffer();
+                        if (buf && buf.byteLength >= 0x8000) {
+                            autoFetchedRom = buf;
+                            const sizeKb = Math.round(buf.byteLength / 1024);
+                            const cleanName = path.includes('/') ? path.split('/').pop() : path;
+                            $('rom-status').innerHTML = `<span class="text-emerald-400 font-bold">Auto: ${cleanName} (${sizeKb}KB)</span>`;
+                            const sub = $('screen-start-subtext');
+                            if (sub) sub.innerText = `ROM Ready: ${cleanName} (${sizeKb}KB)`;
+                            return;
+                        }
+                    }
+                } catch (_) {}
+            }
+
+            $('rom-status').innerHTML = `<span class="text-amber-400">Manual Selection</span>`;
+        }
+
+        async function initStorageStatus() {
+            const saved = await loadSramFromStorage();
+            if (saved && saved.length > 0) {
+                $('sav-status').innerHTML = `<span class="text-emerald-400 font-bold">Browser: ${saved.length}B</span>`;
+            } else {
+                $('sav-status').innerHTML = `<span class="text-slate-400">Browser: Empty</span>`;
+            }
+        }
+
+        // ============================================================
+        // START ENGINE & SAVE
+        // ============================================================
+        $('btn-start').onclick = async () => {
+            let romBuf = null;
+            const romFile = $('rom-upload').files[0];
+
+            if (romFile) {
+                romBuf = await romFile.arrayBuffer();
+            } else if (autoFetchedRom) {
+                romBuf = autoFetchedRom;
+            } else {
+                $('rom-status').innerHTML = `<span class="text-yellow-400">Fetching ROM...</span>`;
+                await autoDetectRom();
+                if (autoFetchedRom) {
+                    romBuf = autoFetchedRom;
+                } else {
+                    alert("Please select a Pokémon TCG ROM (.gbc) or place poketcg-duel-client.gbc in the same folder as index.html.");
+                    return;
+                }
+            }
+
+            let savBuf = null;
+            const savFile = $('sav-upload').files[0];
+
+            if (savFile) {
+                savBuf = await savFile.arrayBuffer();
+                await saveSramToStorage(new Uint8Array(savBuf));
+                $('sav-status').innerHTML = `<span class="text-emerald-400 font-bold">Browser: ${savBuf.byteLength}B</span>`;
+            } else {
+                const storedSram = await loadSramFromStorage();
+                if (storedSram && storedSram.length > 0) {
+                    savBuf = storedSram.buffer;
+                }
+            }
+
+            await initEmulator(romBuf, savBuf);
+            $('focus-overlay').classList.remove('hidden');
+        };
+
+        const btnResetGame = $('btn-reset-game');
+        if (btnResetGame) {
+            btnResetGame.onclick = async () => {
+                if (!emulatorPtr || !originalRomBuffer) return;
+                const sram = getEmulatorSramData();
+                if (sram && sram.length > 0) {
+                    await saveSramToStorage(sram);
+                }
+                const storedSram = await loadSramFromStorage();
+                const savBuf = storedSram ? storedSram.buffer : currentSavBuffer;
+                // Soft reset from pristine ROM (portrait re-applied inside initEmulator).
+                await initEmulator(originalRomBuffer, savBuf);
+                resetAllButtons();
+                resetLinkSyncState({ notifyPeer: true });
+                if (connection?.open) {
+                    const myName = getLocalPlayerName();
+                    const rawName = readRawPlayerName();
+                    connection.send({
+                        type: 'hello',
+                        room: myRoomCode,
+                        name: myName,
+                        rawName: rawName
+                    });
+                    addChatMessage('SYSTEM', 'Local soft reset — link preserved, ready cleared.');
+                }
+                $('gb-canvas')?.focus();
+            };
+        }
+
+        $('btn-save-now').onclick = async () => {
+            if (!emulatorPtr) return;
+            const sram = getEmulatorSramData();
+            if (sram && sram.length > 0) {
+                await saveSramToStorage(sram);
+                const oldText = $('btn-save-now').innerText;
+                $('btn-save-now').innerText = "✓ SAVED!";
+                setTimeout(() => { $('btn-save-now').innerText = oldText; }, 1500);
+            }
+        };
+
+        $('btn-download-sav').onclick = () => {
+            const sram = getEmulatorSramData();
+            if (sram && sram.length > 0) {
+                saveSramToStorage(sram);
+                const blob = new Blob([sram], { type: 'application/octet-stream' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'poketcg.sav';
+                a.click();
+            }
+        };
+
+        $('btn-clear-sav').onclick = async () => {
+            if (confirm("Reset/Delete browser save data? You will start fresh on next launch.")) {
+                await clearSramFromStorage();
+                $('sav-status').innerHTML = `<span class="text-slate-400">Browser: Empty</span>`;
+            }
+        };
+
+        // Custom avatar UI
+        $('btn-customize-toggle')?.addEventListener('click', () => {
+            const panel = $('customize-panel');
+            if (!panel) return;
+            panel.classList.toggle('hidden');
+        });
+
+        const avatarDrop = $('avatar-drop');
+        const avatarInput = $('avatar-upload');
+        if (avatarDrop && avatarInput) {
+            avatarDrop.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                avatarDrop.classList.add('border-violet-400');
+            });
+            avatarDrop.addEventListener('dragleave', () => {
+                avatarDrop.classList.remove('border-violet-400');
+            });
+            avatarDrop.addEventListener('drop', (e) => {
+                e.preventDefault();
+                avatarDrop.classList.remove('border-violet-400');
+                handleAvatarFile(e.dataTransfer.files[0]);
+            });
+            avatarInput.addEventListener('change', (e) => handleAvatarFile(e.target.files[0]));
+        }
+
+        $('btn-clear-avatar')?.addEventListener('click', async () => {
+            customPlayerPortrait = null;
+            customPortraitSent = false;
+            await savePlayerPortraitToStorage(null);
+            await setHasCustomAvatar(false);
+            updateAvatarUi(null, 'No custom avatar', true);
+            addChatMessage('SYSTEM', 'Custom avatar cleared (wHasCustomAvatar = 0).');
+        });
+
+        (async () => {
+            customPlayerPortrait = await loadPlayerPortraitFromStorage();
+            if (customPlayerPortrait) {
+                updateAvatarUi(customPlayerPortrait, 'Loaded from browser storage', true);
+            }
+        })();
+
+        autoDetectRom();
+        initStorageStatus();
+
+        // ============================================================
+        // PEER / ROOM
+        // ============================================================
+        function makeRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) {
+                code += chars[Math.floor(Math.random() * chars.length)];
+            }
+            return code;
+        }
+
+        function setConnectionStatus(text, cls = 'text-yellow-500 font-bold uppercase') {
+            $('conn-status').innerText = text;
+            $('conn-status').className = cls;
+        }
+
+        const PEERJS_SERVER = 'poketcg-peerjs-server.onrender.com';
+        const PEERJS_PATH = '/peerjs';
+
+        const peerOptions = {
+            host: PEERJS_SERVER,
+            port: 443,
+            path: PEERJS_PATH,
+            secure: true,
+            debug: 0,
+            config: {
+                iceTransportPolicy: 'all',
+                iceServers: [
+                    {
+                        urls: "stun:stun.relay.metered.ca:80",
+                    },
+                    {
+                        urls: "turn:global.relay.metered.ca:80",
+                        username: "3bbc2d5b0a81c730368afa0f",
+                        credential: "wr4vKueM5c7mGY94",
+                    },
+                    {
+                        urls: "turn:global.relay.metered.ca:80?transport=tcp",
+                        username: "3bbc2d5b0a81c730368afa0f",
+                        credential: "wr4vKueM5c7mGY94",
+                    },
+                    {
+                        urls: "turn:global.relay.metered.ca:443",
+                        username: "3bbc2d5b0a81c730368afa0f",
+                        credential: "wr4vKueM5c7mGY94",
+                    },
+                    {
+                        urls: "turns:global.relay.metered.ca:443?transport=tcp",
+                        username: "3bbc2d5b0a81c730368afa0f",
+                        credential: "wr4vKueM5c7mGY94",
+                    },
+                ],
+            }
+        };
+
+        function createHost() {
+            if (peer) return;
+            myRoomCode = makeRoomCode();
+            $('room-code').innerText = myRoomCode;
+            setConnectionStatus('CREATING ROOM');
+
+            peer = new Peer(myRoomCode, peerOptions);
+
+            peer.on('open', () => {
+                setConnectionStatus('WAITING FOR PLAYER');
+            });
+
+            peer.on('connection', c => {
+                setupConnection(c);
+            });
+
+            peer.on('error', () => {
+                if (!connection || !connection.open) {
+                    setConnectionStatus('LOBBY ERROR', 'text-red-500 font-bold uppercase');
+                }
+            });
+
+            isHost = true;
+        }
+
+        function joinRoom() {
+            const code = $('remote-id').value.trim().toUpperCase();
+            if (!/^[A-Z2-9]{6}$/.test(code)) return;
+            if (peer) return;
+
+            myRoomCode = code;
+            $('room-code').innerText = code;
+            setConnectionStatus('CONNECTING');
+
+            peer = new Peer(peerOptions);
+
+            peer.on('open', () => {
+                const c = peer.connect(code, { serialization: 'json' });
+                setupConnection(c);
+            });
+
+            peer.on('error', () => {
+                if (!connection || !connection.open) {
+                    setConnectionStatus('LOBBY ERROR', 'text-red-500 font-bold uppercase');
+                }
+            });
+
+            isHost = false;
+        }
+
+        $('btn-host').onclick = createHost;
+        $('btn-connect').onclick = joinRoom;
+
+        // ============================================================
+        // CONNECTION SETUP & MESSAGE ROUTER
+        // ============================================================
+        function setupConnection(conn) {
+            // Replace any previous data channel
+            if (connection && connection !== conn) {
+                try { connection.close(); } catch (_) {}
+            }
+            connection = conn;
+            linkAlive = false;
+            setConnectionStatus('CONNECTING');
+
+            conn.on('open', () => {
+                linkAlive = true;
+                setConnectionStatus('LINKED', 'text-green-500 font-bold uppercase');
+                addChatMessage('SYSTEM', 'Peer connection established.');
+                customPortraitSent = false;
+
+                const myName = getLocalPlayerName();
+                const rawName = readRawPlayerName();
+
+                conn.send({
+                    type: 'hello',
+                    room: myRoomCode,
+                    name: myName,
+                    rawName: rawName
+                });
+                sendCustomPortraitIfNeeded();
+            });
+
+            conn.on('data', d => {
+                if (!d?.type) return;
+
+                if (d.type === 'bye') {
+                    handlePartnerGone('Partner closed the window.');
+                    return;
+                }
+
+                if (d.type === 'hello' || d.type === 'player_info') {
+                    if (d.rawName && Array.isArray(d.rawName)) {
+                        cachedOppRawName = d.rawName.slice();
+                        writeOpponentNameBytes(d.rawName);
+                    }
+                    if (d.name) {
+                        remotePlayerName = d.name;
+                        $('opp-name-tag').innerText = d.name;
+                    }
+                    return;
+                }
+
+                if (d.type === 'peer_soft_reset') {
+                    deckSynced = false;
+                    boardSetupSynced = false;
+                    lastP1State = null;
+                    incomingSerialQueue.length = 0;
+                    const wram = getWram();
+                    if (wram) {
+                        wram[OFFSET_P2_READY] = 0;
+                    }
+                    const p2Flag = $('p2-flag');
+                    if (p2Flag) p2Flag.className = 'w-3 h-3 rounded-full bg-slate-700';
+                    if (wram && connection?.open) {
+                        const myReady = wram[OFFSET_P1_READY] | 0;
+                        connection.send({
+                            type: 'ready_sync',
+                            step: myReady,
+                            avatar: wram[OFFSET_PLAYER_AVATAR],
+                            name: readRawPlayerName()
+                        });
+                        lastP1State = myReady;
+                    }
+                    addChatMessage('SYSTEM', 'Opponent soft-reset — link preserved, their ready cleared.');
+                    return;
+                }
+
+                if (d.type === 'chat') {
+                    addChatMessage(d.name || remotePlayerName || "PARTNER", d.msg);
+                    return;
+                }
+
+                if (d.type === 'ready_sync' || d.type === 'p1_ready_sync') {
+                    const stepVal = d.step ?? d.ready;
+                    const wram = getWram();
+                    if (d.avatar !== undefined) {
+                        // Peer's local COSTUM_PIC maps to our LINK_OPP_PIC slot
+                        const mapped = (d.avatar === COSTUM_PIC) ? LINK_OPP_PIC : d.avatar;
+                        cachedOppAvatar = mapped;
+                    }
+                    if (d.name && Array.isArray(d.name)) {
+                        cachedOppRawName = d.name.slice();
+                    }
+                    if (wram && stepVal !== undefined) {
+                        wram[OFFSET_P2_READY] = stepVal;
+
+                        if (d.avatar !== undefined) {
+                            const mapped = (d.avatar === COSTUM_PIC) ? LINK_OPP_PIC : d.avatar;
+                            wram[OFFSET_OPPONENT_AVATAR] = mapped;
+                        }
+                        if (d.name && Array.isArray(d.name)) {
+                            writeOpponentNameBytes(d.name);
+                        }
+                    }
+                    return;
+                }
+
+                if (d.type === 'deck_exchange') {
+                    const wram = getWram();
+                    if (wram) {
+                        if (d.deck) {
+                            writeOpponentDeckBytes(d.deck);
+                        }
+                        if (d.rawName) {
+                            cachedOppRawName = Array.isArray(d.rawName) ? d.rawName.slice() : cachedOppRawName;
+                            writeOpponentNameBytes(d.rawName);
+                        }
+                        if (d.avatar !== undefined) {
+                            const mapped = (d.avatar === COSTUM_PIC) ? LINK_OPP_PIC : d.avatar;
+                            cachedOppAvatar = mapped;
+                            wram[OFFSET_OPPONENT_AVATAR] = mapped;
+                        }
+                        if (d.portrait) {
+                            applyIncomingOpponentPortrait(d.portrait);
+                        }
+
+                        if (!isHost && d.firstPlayer !== null && d.firstPlayer !== undefined) {
+                            const joinerGoesFirst = (d.firstPlayer === 1);
+                            wram[OFFSET_SERIAL_OP] = joinerGoesFirst ? 0x29 : 0x00;
+                            addChatMessage('SYSTEM', 'Match starting!');
+                        } else if (isHost) {
+                            addChatMessage('SYSTEM', 'Match starting!');
+                        }
+                    }
+                    return;
+                }
+
+                if (d.type === 'custom_portrait') {
+                    if (d.portrait) applyIncomingOpponentPortrait(d.portrait);
+                    return;
+                }
+
+                if (d.type === 'board_setup_sync') {
+                    const wram = getWram();
+                    if (wram && d.duelvars && Array.isArray(d.duelvars)) {
+                        const oppDuelvars = new Uint8Array(d.duelvars);
+                        wram.set(oppDuelvars, OFFSET_OPPONENT_DUELVARS);
+                        wram[OFFSET_OPPONENT_DUELVARS + 0xF1] = 0x01;
+                        addChatMessage('SYSTEM', 'Opponent completed board setup.');
+                    }
+                    return;
+                }
+
+                if (d.type === 'packet_received_by_opp') {
+                    const wram = getWram();
+                    if (wram) {
+                        wram[OFFSET_SERIAL_SEND_STATE] = PACKET_RECEIVED_BY_OPP;
+                    }
+                    return;
+                }
+
+                if (d.type === 'serial_packet') {
+                    if (d.payload && Array.isArray(d.payload)) {
+                        incomingSerialQueue.push(d.payload);
+                    }
+                    return;
+                }
+            });
+
+            conn.on('close', () => {
+                if (connection === conn || linkAlive) {
+                    handlePartnerGone('Peer connection closed.');
+                }
+            });
+
+            conn.on('error', () => {
+                setConnectionStatus('CONNECTION ERROR', 'text-red-500 font-bold uppercase');
+            });
+        }
+
+        // ============================================================
+        // CHAT UI
+        // ============================================================
+        function addChatMessage(sender, text) {
+            const chatBox = $('chat-box');
+            if (!chatBox) return;
+
+            let colorClass = 'text-purple-400';
+            const localName = getLocalPlayerName();
+            if (sender === 'SYSTEM') colorClass = 'text-amber-400 font-semibold';
+            else if (sender === localName || sender === 'YOU') colorClass = 'text-emerald-400';
+
+            const msgEl = document.createElement('div');
+            msgEl.className = 'chat-message my-1';
+            msgEl.innerHTML = `<span class="font-bold ${colorClass}">${escapeHtml(sender)}:</span> <span>${escapeHtml(text)}</span>`;
+            chatBox.appendChild(msgEl);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+        }
+
+        $('chat-input').onkeydown = e => {
+            if (e.key === 'Enter' && e.target.value.trim() && connection?.open) {
+                const myName = getLocalPlayerName();
+                const msgText = e.target.value.trim();
+                connection.send({ type: 'chat', name: myName, msg: msgText });
+                addChatMessage(myName, msgText);
+                e.target.value = '';
+            }
+        };
+
+        $('focus-overlay').onclick = () => {
+            if (audio?.ctx) {
+                audio.ctx.resume();
+                audio.setMuted(false);
+            }
+            $('gb-canvas').focus();
+            $('focus-overlay').classList.add('hidden');
+        };
+
+        $('gb-canvas').onclick = () => {
+            $('gb-canvas').focus();
+            if (audio?.ctx?.state === 'suspended') {
+                audio.ctx.resume();
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            setupInput();
+            fitCanvasIntegerScale();
+        });
+        setupInput();
+        fitCanvasIntegerScale();
+
+        if (window.ResizeObserver) {
+            new ResizeObserver(() => {
+                fitCanvasIntegerScale();
+            }).observe(document.body);
+        }
+        window.addEventListener('resize', fitCanvasIntegerScale);
+
+        function listenForDprChanges() {
+            if (!window.matchMedia) return;
+            try {
+                const media = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+                media.addEventListener('change', () => {
+                    fitCanvasIntegerScale();
+                    listenForDprChanges();
+                }, { once: true });
+            } catch (_) {}
+        }
+        listenForDprChanges();
+    </script>
+</body>
+</html>
